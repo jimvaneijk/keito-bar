@@ -1,57 +1,61 @@
 {
-  "name": "keito-bar",
-  "productName": "Keito Bar",
-  "version": "0.2.0",
-  "description": "Menubar-app voor Keito tijdregistratie, met Harvest-achtige weeknavigatie.",
-  "main": "main.js",
-  "private": true,
-  "author": "23G",
-  "scripts": {
-    "start": "electron .",
-    "dev": "electron . --inspect",
-    "check": "node --check main.js && node --check preload.js && node --check src/keito-api.js && node --check renderer/app.js",
-    "dist": "KEITO_ADHOC=1 CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --arm64 --publish never",
-    "dist:universal": "KEITO_ADHOC=1 CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --universal --publish never",
-    "release": "node build/release.js",
-    "release:universal": "node build/release.js --universal"
-  },
-  "dependencies": {
-    "electron-updater": "^6.8.11"
-  },
-  "devDependencies": {
-    "electron": "^45.2.3",
-    "electron-builder": "^26.0.0"
-  },
-  "build": {
-    "appId": "nl.23g.keitobar",
+    "name": "keito-bar",
     "productName": "Keito Bar",
-    "files": [
-      "main.js",
-      "preload.js",
-      "src/**",
-      "renderer/**",
-      "assets/**"
-    ],
-    "mac": {
-      "category": "public.app-category.productivity",
-      "icon": "assets/icon.png",
-      "target": [
-        "dmg",
-        "zip"
-      ],
-      "extendInfo": {
-        "LSUIElement": true
-      },
-      "hardenedRuntime": true
+    "version": "0.2.0",
+    "description": "Menubar-app voor Keito tijdregistratie, met Harvest-achtige weeknavigatie.",
+    "main": "main.js",
+    "private": true,
+    "author": "23G",
+    "scripts": {
+        "start": "electron .",
+        "dev": "electron . --inspect",
+        "check": "node --check main.js && node --check preload.js && node --check src/keito-api.js && node --check renderer/app.js",
+        "dist": "KEITO_ADHOC=1 CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --arm64 --publish never",
+        "dist:universal": "KEITO_ADHOC=1 CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --universal --publish never",
+        "release": "node build/release.js",
+        "release:universal": "node build/release.js --universal",
+        "format": "prettier --write .",
+        "format:check": "prettier --check ."
     },
-    "afterPack": "build/adhoc-sign.js",
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "VUL-IN",
-        "repo": "keito-bar",
-        "releaseType": "release"
-      }
-    ]
-  }
+    "dependencies": {
+        "electron-updater": "^6.8.11"
+    },
+    "devDependencies": {
+        "electron": "^45.2.3",
+        "electron-builder": "^26.0.0",
+        "prettier": "^3.9.10"
+    },
+    "build": {
+        "appId": "nl.23g.keitobar",
+        "productName": "Keito Bar",
+        "files": [
+            "main.js",
+            "preload.js",
+            "src/**",
+            "renderer/**",
+            "assets/**"
+        ],
+        "mac": {
+            "category": "public.app-category.productivity",
+            "icon": "assets/icon.png",
+            "target": [
+                "dmg",
+                "zip"
+            ],
+            "extendInfo": {
+                "LSUIElement": true
+            },
+            "hardenedRuntime": true,
+            "artifactName": "Keito-Bar-${version}-${arch}.${ext}"
+        },
+        "afterPack": "build/adhoc-sign.js",
+        "publish": [
+            {
+                "provider": "github",
+                "owner": "jimvaneijk",
+                "repo": "keito-bar",
+                "releaseType": "release"
+            }
+        ]
+    }
 }
