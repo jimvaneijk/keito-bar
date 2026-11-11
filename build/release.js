@@ -73,6 +73,33 @@ if (!env.GH_TOKEN) {
 }
 success('GitHub-token gevonden');
 
+// 4b. Does the repo from package.json exist (and can this token see it)? Fail now, not after notarizing.
+const repoCheck = spawnSync(
+    'curl',
+    [
+        '-s',
+        '-o',
+        '/dev/null',
+        '-w',
+        '%{http_code}',
+        '-H',
+        `Authorization: Bearer ${env.GH_TOKEN}`,
+        `https://api.github.com/repos/${publishConfig.owner}/${publishConfig.repo}`,
+    ],
+    { encoding: 'utf8' },
+);
+if (repoCheck.stdout === '404') {
+    let remote = '';
+    try {
+        remote = execSync('git remote get-url origin', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    } catch {
+        /* no git repo */
+    }
+    fail(`GitHub-repo ${publishConfig.owner}/${publishConfig.repo} bestaat niet (of je token mag er niet bij).
+  Controleer build.publish in package.json${remote ? ` (je git-remote is ${remote})` : ''}.`);
+}
+if (repoCheck.stdout === '200') success(`GitHub-repo ${publishConfig.owner}/${publishConfig.repo} gevonden`);
+
 // 5. Build, sign, notarize, publish
 const arch = process.argv.includes('--universal') ? '--universal' : '--arm64';
 console.log(`\n→ Keito Bar ${packageJson.version} bouwen (${arch.slice(2)}), signeren, notariseren en publiceren…`);

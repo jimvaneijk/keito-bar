@@ -158,6 +158,11 @@ Je menubalk is mogelijk vol (zeker op een MacBook met notch). Sluit wat andere m
 of open Keito Bar met <kbd>⌘⇧K</kbd>. Op macOS 26: controleer bij *Systeeminstellingen →
 Menubalk* of Keito Bar is toegestaan.
 
+**Na een update blijft Keito Bar op een draaiend rondje staan.**
+macOS vraagt dan eenmalig om toegang tot je sleutelhanger ("Keito Bar wil vertrouwelijke
+gegevens gebruiken…"). Die melding staat soms achter andere vensters: zoek hem via Mission
+Control, vul je Mac-wachtwoord in en kies **Altijd toestaan**.
+
 **"Keito accepteert de API key of Company ID niet."**
 Controleer of je een *full-access integration key* gebruikt (geen sync key) en of de
 Company ID bij hetzelfde bedrijf hoort.

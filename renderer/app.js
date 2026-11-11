@@ -1,7 +1,7 @@
 /* Keito Bar — renderer. Plain JS, no framework. All API calls go through window.keito (preload). */
 'use strict';
 
-const keito = window.keito;
+const keitoBridge = window.keito;
 const findElement = (selector) => document.querySelector(selector);
 
 // ---------------------------------------------------------------- dates
@@ -136,7 +136,7 @@ function show(view) {
 
 async function loadProjects(force = false) {
     if (!force && state.projects.length && Date.now() - state.projectsLoadedAt < 30 * 60e3) return;
-    const list = await run(keito.projects(), { quiet: state.projects.length > 0 });
+    const list = await run(keitoBridge.projects(), { quiet: state.projects.length > 0 });
     list.sort(
         (left, right) =>
             (left.clientName || '~').localeCompare(right.clientName || '~', 'nl') ||
@@ -149,7 +149,7 @@ async function loadProjects(force = false) {
 
 async function loadTasks(projectId) {
     if (state.tasks.has(projectId)) return state.tasks.get(projectId);
-    const list = await run(keito.tasks(projectId));
+    const list = await run(keitoBridge.tasks(projectId));
     state.tasks.set(projectId, list);
     return list;
 }
@@ -169,7 +169,7 @@ async function loadWeek({ silent = false } = {}) {
 
     const requestId = ++latestWeekRequest;
     try {
-        const data = await run(keito.entries({ from: key, to: addDays(key, 6) }), { quiet: silent && !!cached });
+        const data = await run(keitoBridge.entries({ from: key, to: addDays(key, 6) }), { quiet: silent && !!cached });
         state.weeks.set(key, data);
         if (requestId !== latestWeekRequest || key !== state.weekStart) return; // user moved on
         state.entries = data.entries;
@@ -284,7 +284,7 @@ function render() {
 
     // Menubar shows today's total when no timer runs
     if (mondayOf(today) === state.weekStart && !state.loadingWeek)
-        keito.setTodayTotal(
+        keitoBridge.setTodayTotal(
             entriesOn(today)
                 .filter((entry) => !entry.isRunning)
                 .reduce((total, entry) => total + entry.hours, 0),
@@ -348,8 +348,8 @@ async function toggleTimer(id) {
     if (!entry) return;
     state.busy = true;
     try {
-        if (entry.isRunning) await run(keito.stop(id));
-        else await run(keito.restart(id));
+        if (entry.isRunning) await run(keitoBridge.stop(id));
+        else await run(keitoBridge.restart(id));
         invalidateWeeks();
         await loadWeek({ silent: true });
     } catch {
@@ -481,7 +481,7 @@ async function searchJira() {
     }
     if (!form.jiraItems?.length) list.innerHTML = '<div class="combo-empty">Zoeken in Jira…</div>';
     const requestId = ++latestJiraRequest;
-    const result = await keito.jiraSearch(query, projectKey);
+    const result = await keitoBridge.jiraSearch(query, projectKey);
     if (requestId !== latestJiraRequest || state.form !== form) return;
     if (!result.ok) {
         list.innerHTML = `<div class="combo-empty">${escapeHtml(result.error.message)}</div>`;
@@ -670,7 +670,7 @@ async function submitForm() {
         if (form.id) {
             const body = { ...base };
             if (!form.isRunning && hours !== null) body.hours = round(hours);
-            await run(keito.update(form.id, body));
+            await run(keitoBridge.update(form.id, body));
             toast('Opgeslagen');
         } else if (hours === null) {
             if (!isToday) {
@@ -679,7 +679,7 @@ async function submitForm() {
                 return;
             }
             await run(
-                keito.create({
+                keitoBridge.create({
                     ...base,
                     spent_date: form.date,
                     is_running: true,
@@ -690,7 +690,7 @@ async function submitForm() {
             toast('Timer gestart');
         } else {
             await run(
-                keito.create({
+                keitoBridge.create({
                     ...base,
                     spent_date: form.date,
                     hours: round(hours),
@@ -730,7 +730,7 @@ async function deleteEntry() {
         return;
     }
     try {
-        await run(keito.remove(form.id));
+        await run(keitoBridge.remove(form.id));
         toast('Verwijderd');
         closeForm();
         invalidateWeeks();
@@ -817,7 +817,7 @@ function closeCombo() {
 
 async function openSettings() {
     show('settings');
-    const prefs = await run(keito.prefsGet()).catch(() => null);
+    const prefs = await run(keitoBridge.prefsGet()).catch(() => null);
     if (prefs) Object.assign(state.prefs, prefs);
     const me = state.me || {};
     findElement('#s-avatar').textContent = (me.name || '?')
@@ -860,7 +860,7 @@ findElement('#jira-form').addEventListener('submit', async (event) => {
     const submitButton = findElement('#j-submit');
     submitButton.disabled = true;
     submitButton.textContent = 'Koppelen…';
-    const result = await keito.jiraSave({
+    const result = await keitoBridge.jiraSave({
         site: findElement('#j-site').value,
         email: findElement('#j-email').value,
         token: findElement('#j-token').value,
@@ -947,7 +947,7 @@ function setAccent(hex, { live = false } = {}) {
         renderSwatches();
     }
     clearTimeout(setAccent.t);
-    setAccent.t = setTimeout(() => keito.prefsSet({ accent: hex }).catch(() => {}), 250); // colour picker fires a lot
+    setAccent.t = setTimeout(() => keitoBridge.prefsSet({ accent: hex }).catch(() => {}), 250); // colour picker fires a lot
 }
 
 function syncPrefControls() {
@@ -978,17 +978,17 @@ function syncPrefControls() {
 async function setPref(patch) {
     Object.assign(state.prefs, patch);
     syncPrefControls();
-    await run(keito.prefsSet(patch)).catch(() => {});
+    await run(keitoBridge.prefsSet(patch)).catch(() => {});
 }
 
 // ---------------------------------------------------------------- boot / auth
 
 async function boot() {
     show('loading');
-    const prefs = await keito.prefsGet();
+    const prefs = await keitoBridge.prefsGet();
     if (prefs.ok) Object.assign(state.prefs, prefs.data);
     applyAccent(state.prefs.accent);
-    const result = await keito.authStatus();
+    const result = await keitoBridge.authStatus();
     if (!result.ok) {
         show('setup');
         toast(result.error.message, 'error');
@@ -1000,12 +1000,12 @@ async function boot() {
         return;
     }
     state.me = result.data.me;
-    const jiraResult = await keito.jiraStatus();
+    const jiraResult = await keitoBridge.jiraStatus();
     if (jiraResult.ok) state.jira = jiraResult.data;
     enterMain();
-    const idle = await keito.idleGet();
+    const idle = await keitoBridge.idleGet();
     if (idle.ok && idle.data) showIdle(idle.data);
-    const nudge = await keito.nudgeGet();
+    const nudge = await keitoBridge.nudgeGet();
     if (nudge.ok && nudge.data) showNudge(nudge.data);
 }
 
@@ -1025,7 +1025,7 @@ findElement('#setup-form').addEventListener('submit', async (event) => {
     const submitButton = findElement('#setup-submit');
     submitButton.disabled = true;
     submitButton.textContent = 'Verbinden…';
-    const result = await keito.authSave({
+    const result = await keitoBridge.authSave({
         token: findElement('#setup-token').value,
         accountId: findElement('#setup-account').value,
     });
@@ -1053,7 +1053,7 @@ document.addEventListener('click', (event) => {
     }
     const tag = target.closest('[data-jira]');
     if (tag) {
-        keito.jiraOpen(tag.dataset.jira);
+        keitoBridge.jiraOpen(tag.dataset.jira);
         return;
     }
     const jItem = target.closest('.jira-item');
@@ -1127,44 +1127,44 @@ document.addEventListener('click', (event) => {
             render();
             break;
         case 'open-web':
-            keito.openWeb();
+            keitoBridge.openWeb();
             break;
         case 'open-web-settings':
-            keito.openWeb('/settings');
+            keitoBridge.openWeb('/settings');
             break;
         case 'quit':
-            keito.quit();
+            keitoBridge.quit();
             break;
         case 'jira-open':
-            if (state.form?.jira) keito.jiraOpen(state.form.jira.key);
+            if (state.form?.jira) keitoBridge.jiraOpen(state.form.jira.key);
             break;
         case 'jira-unlink':
             setJiraIssue(null);
             findElement('#f-jira').focus();
             break;
         case 'jira-token-page':
-            keito.jiraTokenPage();
+            keitoBridge.jiraTokenPage();
             break;
         case 'update-check':
             checkUpdates();
             break;
         case 'update-install':
-            keito.updateInstall();
+            keitoBridge.updateInstall();
             break;
         case 'test-nudge': {
             const type = target.closest('[data-act]').dataset.type;
-            run(keito.nudgeTest(type)).catch(() => {});
+            run(keitoBridge.nudgeTest(type)).catch(() => {});
             break;
         }
         case 'jira-logout':
-            keito.jiraClear().then((result) => {
+            keitoBridge.jiraClear().then((result) => {
                 if (result.ok) state.jira = result.data;
                 state.jiraCache.clear();
                 renderJiraSettings();
             });
             break;
         case 'logout':
-            keito.authClear().then(() => {
+            keitoBridge.authClear().then(() => {
                 state.me = null;
                 state.weeks.clear();
                 state.entries = [];
@@ -1288,7 +1288,7 @@ document.addEventListener('keydown', (event) => {
             }
         } else if (event.key === 'Escape') {
             event.preventDefault();
-            keito.hide();
+            keitoBridge.hide();
         }
         return;
     }
@@ -1299,7 +1299,7 @@ document.addEventListener('keydown', (event) => {
             resolveIdle(['remove-continue', 'remove-stop', 'reassign', 'keep'][+event.key - 1]);
         } else if (event.key === 'Escape') {
             event.preventDefault();
-            keito.hide(); // question stays open until answered
+            keitoBridge.hide(); // question stays open until answered
         }
         return;
     }
@@ -1329,7 +1329,7 @@ document.addEventListener('keydown', (event) => {
             render();
             return;
         }
-        keito.hide();
+        keitoBridge.hide();
         return;
     }
     if (state.form && event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
@@ -1408,7 +1408,7 @@ async function resolveIdle(action) {
     if (!pending || state.busy) return;
     state.busy = true;
     document.querySelectorAll('[data-idle]').forEach((button) => (button.disabled = true));
-    const result = await keito.idleResolve(action);
+    const result = await keitoBridge.idleResolve(action);
     state.busy = false;
     hideIdle();
     invalidateWeeks();
@@ -1446,7 +1446,7 @@ document.addEventListener(
     true,
 );
 
-keito.on('idle', (pending) => showIdle(pending));
+keitoBridge.on('idle', (pending) => showIdle(pending));
 
 // ---------------------------------------------------------------- day reminders
 
@@ -1519,14 +1519,14 @@ async function resolveNudge(id) {
     if (!nudge || state.busy) return;
     hideNudge();
     // Main only needs to know: snooze, or answered.
-    await keito.nudgeResolve(id === 'snooze' ? 'snooze' : id === 'dismiss' ? 'dismiss' : 'act');
+    await keitoBridge.nudgeResolve(id === 'snooze' ? 'snooze' : id === 'dismiss' ? 'dismiss' : 'act');
     if (id === 'snooze') {
         toast('Ik herinner je over 15 minuten');
-        keito.hide();
+        keitoBridge.hide();
         return;
     }
     if (id === 'dismiss') {
-        if (nudge.type === 'start') keito.hide();
+        if (nudge.type === 'start') keitoBridge.hide();
         return;
     }
 
@@ -1540,7 +1540,7 @@ async function resolveNudge(id) {
         state.busy = true;
         try {
             await run(
-                keito.create({
+                keitoBridge.create({
                     project_id: nudge.suggest.projectId,
                     task_id: nudge.suggest.taskId,
                     spent_date: todayIsoDate(),
@@ -1579,7 +1579,7 @@ document.addEventListener(
     true,
 );
 
-keito.on('nudge', (nudge) => showNudge(nudge));
+keitoBridge.on('nudge', (nudge) => showNudge(nudge));
 
 // ---------------------------------------------------------------- updates
 
@@ -1608,22 +1608,22 @@ function renderUpdate(updateInfo) {
 
 async function checkUpdates() {
     renderUpdate({ ...(state.update || {}), state: 'checking' });
-    const result = await keito.updateCheck();
+    const result = await keitoBridge.updateCheck();
     if (result.ok) renderUpdate(result.data);
 }
 
-keito.on('update', (updateInfo) => renderUpdate(updateInfo));
-keito.updateStatus().then((result) => result.ok && renderUpdate(result.data));
+keitoBridge.on('update', (updateInfo) => renderUpdate(updateInfo));
+keitoBridge.updateStatus().then((result) => result.ok && renderUpdate(result.data));
 
 // Window re-opened from the menubar: refresh, and follow "today" across midnight.
-keito.on('window:shown', () => {
+keitoBridge.on('window:shown', () => {
     if (!state.me) return;
     if (!state.idle)
-        keito.idleGet().then((result) => {
+        keitoBridge.idleGet().then((result) => {
             if (result.ok && result.data) showIdle(result.data);
         });
     if (!state.nudge)
-        keito.nudgeGet().then((result) => {
+        keitoBridge.nudgeGet().then((result) => {
             if (result.ok && result.data) showNudge(result.data);
         });
     const today = todayIsoDate();
@@ -1640,15 +1640,20 @@ keito.on('window:shown', () => {
         loadProjects().catch(() => {});
     }
 });
-keito.on('data:changed', () => {
+keitoBridge.on('data:changed', () => {
     invalidateWeeks();
     if (state.me) loadWeek({ silent: true });
 });
-keito.on('nav', (where) => {
+keitoBridge.on('nav', (where) => {
     if (where === 'settings' && state.me) {
         closeForm();
         openSettings();
     }
 });
+
+// If the main process is blocked (usually a macOS keychain prompt after an update), say so.
+setTimeout(() => {
+    if (state.view === 'loading') findElement('#loading-hint').hidden = false;
+}, 4000);
 
 boot();
