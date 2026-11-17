@@ -1339,3 +1339,18 @@ select:focus {
         --warn-strong: #a35a08;
     }
 }
+
+/* ------------------------------------------------------------ detached window */
+/* Losgemaakt: drag the window by its top bars; controls stay clickable. */
+body.detached .topbar,
+body.detached .pane-head,
+body.detached .sheet-head {
+    -webkit-app-region: drag;
+}
+body.detached button,
+body.detached input,
+body.detached select,
+body.detached textarea,
+body.detached .weeklabel {
+    -webkit-app-region: no-drag;
+}

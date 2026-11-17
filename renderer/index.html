@@ -34,6 +34,24 @@
                     <div class="topbar-right">
                         <button id="btn-today" class="chip" data-act="today" title="Naar vandaag (T)">Vandaag</button>
                         <button
+                            id="btn-detach"
+                            class="icon-btn"
+                            data-act="toggle-detach"
+                            title="Losmaken van menubalk"
+                            aria-label="Losmaken van menubalk"
+                        >
+                            <svg id="icon-detach" viewBox="0 0 24 24" stroke-width="2">
+                                <path d="M14 4h6v6" />
+                                <path d="m20 4-8 8" />
+                                <path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" />
+                            </svg>
+                            <svg id="icon-attach" viewBox="0 0 24 24" stroke-width="2" hidden>
+                                <path d="M4 4h16" />
+                                <path d="M12 20V9" />
+                                <path d="m7 13 5-5 5 5" />
+                            </svg>
+                        </button>
+                        <button
                             class="icon-btn"
                             data-act="settings"
                             title="Instellingen (⌘,)"
@@ -212,6 +230,10 @@
                         <label class="row">
                             <span>Totaal van vandaag in de menubalk</span>
                             <input type="checkbox" class="switch" data-pref="trayShowsToday" />
+                        </label>
+                        <label class="row">
+                            <span>Losgemaakt venster altijd bovenop</span>
+                            <input type="checkbox" class="switch" data-pref="detachedOnTop" />
                         </label>
                         <label class="row">
                             <span>Vragen bij idle-tijd</span>

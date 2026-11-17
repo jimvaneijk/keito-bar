@@ -85,6 +85,18 @@ Klik op het klokje in de menubalk, of druk overal op **⌘⇧K**.
 - **Taak**: de app onthoudt per project welke taak je het laatst gebruikte.
 - **Jira**: de notitie wordt opgeslagen als `KEY-123 · samenvatting — jouw notitie`. Ticketnummers in je lijst zijn klikbaar.
 
+### Losmaken van de menubalk
+
+Liever een gewoon venster naast je werk? Klik rechtsboven op **↗ Losmaken van menubalk**
+(of klik met rechts op het klokje → *Losmaken van menubalk*). Het venster:
+
+- blijft open als je ergens anders klikt, en is te verslepen en groter of kleiner te maken
+- staat in het Dock en in <kbd>⌘</kbd>-Tab; <kbd>⌘W</kbd> verbergt het, het klokje of <kbd>⌘⇧K</kbd> haalt het terug
+- onthoudt waar je het neerzette, ook na een herstart
+- kan **altijd bovenop** blijven (rechtsklik op het klokje, of Instellingen)
+
+Met **Terugzetten in menubalk** (dezelfde knop) zit het weer onder het klokje.
+
 ### Idle-tijd
 
 <img src="docs/screenshots/idle.png" alt="Idle-tijd melding" width="300" align="right">
@@ -179,6 +191,7 @@ keer per dag (tenzij je *Herinner me over 15 min* kiest).
 | <kbd>⌘↵</kbd> | Opslaan |
 | <kbd>⌘R</kbd> | Verversen |
 | <kbd>Esc</kbd> | Terug / venster sluiten |
+| <kbd>⌘W</kbd> | Venster verbergen (ook losgemaakt) |
 
 ---
 

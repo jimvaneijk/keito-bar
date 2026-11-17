@@ -82,6 +82,7 @@ function prefs() {
             ? config.meetingDelayMinutes
             : 1,
         budgetEnabled: config.budgetEnabled !== false,
+        detachedOnTop: config.detachedOnTop === true,
         budgetWarnPercent: BUDGET_WARN_CHOICES.includes(config.budgetWarnPercent) ? config.budgetWarnPercent : 80,
     };
 }
@@ -319,6 +320,26 @@ function buildContextMenu() {
                   },
               ]
             : []),
+        windowMode() === 'detached'
+            ? { label: 'Terugzetten in menubalk', click: () => applyWindowMode('attached') }
+            : { label: 'Losmaken van menubalk', click: () => applyWindowMode('detached') },
+        ...(windowMode() === 'detached'
+            ? [
+                  {
+                      label: 'Altijd bovenop',
+                      type: 'checkbox',
+                      checked: prefs().detachedOnTop,
+                      click: (item) => {
+                          const config = readConfig();
+                          config.detachedOnTop = item.checked;
+                          writeConfig(config);
+                          win.setAlwaysOnTop(item.checked);
+                          send('prefs:changed');
+                      },
+                  },
+              ]
+            : []),
+        { type: 'separator' },
         {
             label: 'Instellingen…',
             click: () => {
@@ -876,8 +897,21 @@ function createWindow() {
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
     win.on('blur', () => {
-        if (!win.webContents.isDevToolsOpened()) win.hide();
+        if (windowMode() === 'attached' && !win.webContents.isDevToolsOpened()) win.hide();
     });
+    // Remember where you put the detached window.
+    let saveBoundsTimer = null;
+    const saveDetachedBounds = () => {
+        if (windowMode() !== 'detached') return;
+        clearTimeout(saveBoundsTimer);
+        saveBoundsTimer = setTimeout(() => {
+            const config = readConfig();
+            config.detachedBounds = win.getBounds();
+            writeConfig(config);
+        }, 400);
+    };
+    win.on('moved', saveDetachedBounds);
+    win.on('resized', saveDetachedBounds);
     // Links open in the default browser, never inside the popover.
     win.webContents.setWindowOpenHandler(({ url }) => {
         if (/^https:\/\//.test(url)) shell.openExternal(url);
@@ -902,15 +936,74 @@ function positionWindow() {
 
 function showWindow() {
     if (!win) return;
-    positionWindow();
+    if (windowMode() === 'attached') positionWindow();
     win.show();
     win.focus();
     send('window:shown');
 }
 
 function toggleWindow() {
-    if (win.isVisible()) win.hide();
+    // Detached: a click on the menubar icon brings the window forward; only hide it when it already is.
+    if (win.isVisible() && (windowMode() === 'attached' || win.isFocused())) win.hide();
     else showWindow();
+}
+
+// ---------------------------------------------------------------- window mode
+//
+// 'attached': popover under the menubar icon that hides when you click elsewhere (default).
+// 'detached': a normal window you can move and resize, with a Dock icon (⌘-Tab).
+
+const DETACHED_MIN = { width: 360, height: 480 };
+
+function windowMode() {
+    return readConfig().windowMode === 'detached' ? 'detached' : 'attached';
+}
+
+/** Saved position of the detached window, if it still fits on a connected display. */
+function detachedBounds() {
+    const saved = readConfig().detachedBounds;
+    const fits =
+        saved &&
+        screen.getAllDisplays().some(({ workArea }) => {
+            const overlapX =
+                Math.min(saved.x + saved.width, workArea.x + workArea.width) - Math.max(saved.x, workArea.x);
+            const overlapY =
+                Math.min(saved.y + saved.height, workArea.y + workArea.height) - Math.max(saved.y, workArea.y);
+            return overlapX > 120 && overlapY > 120;
+        });
+    if (fits) return saved;
+    // First time: start where the popover was, a little lower so it looks "pulled off".
+    positionWindow();
+    const [x, y] = win.getPosition();
+    return { x, y: y + 24, width: WIN_W, height: WIN_H };
+}
+
+function applyWindowMode(mode, { reveal = true } = {}) {
+    const detached = mode === 'detached';
+    const config = readConfig();
+    config.windowMode = detached ? 'detached' : 'attached';
+    writeConfig(config);
+
+    win.setResizable(detached);
+    win.setMovable(detached);
+    win.setMinimumSize(detached ? DETACHED_MIN.width : WIN_W, detached ? DETACHED_MIN.height : WIN_H);
+    win.setAlwaysOnTop(detached ? prefs().detachedOnTop : true);
+    win.setVisibleOnAllWorkspaces(!detached, { visibleOnFullScreen: !detached });
+    if (detached) win.setBounds(detachedBounds());
+    else win.setSize(WIN_W, WIN_H);
+
+    send('window:mode', config.windowMode);
+    if (isMac) {
+        if (detached) {
+            // A Dock icon makes the window reachable with ⌘-Tab; showing it can steal focus, so reveal after.
+            Promise.resolve(app.dock.show())
+                .catch(() => {})
+                .then(() => reveal && showWindow());
+            return;
+        }
+        app.dock.hide();
+    }
+    if (reveal) showWindow();
 }
 
 function send(channel, ...args) {
@@ -1013,6 +1106,7 @@ function registerIpc() {
             }
             if (typeof patch.meetingEnabled === 'boolean') config.meetingEnabled = patch.meetingEnabled;
             if (typeof patch.budgetEnabled === 'boolean') config.budgetEnabled = patch.budgetEnabled;
+            if (typeof patch.detachedOnTop === 'boolean') config.detachedOnTop = patch.detachedOnTop;
             if (BUDGET_WARN_CHOICES.includes(Number(patch.budgetWarnPercent)))
                 config.budgetWarnPercent = Number(patch.budgetWarnPercent);
             if (MEETING_DELAY_CHOICES.includes(Number(patch.meetingDelayMinutes)))
@@ -1025,6 +1119,8 @@ function registerIpc() {
             else if (typeof patch.accent === 'string' && /^#[0-9a-f]{6}$/i.test(patch.accent))
                 config.accent = patch.accent.toLowerCase();
             writeConfig(config);
+            if (typeof patch.detachedOnTop === 'boolean' && windowMode() === 'detached')
+                win.setAlwaysOnTop(patch.detachedOnTop);
             if (typeof patch.meetingEnabled === 'boolean' && meetingDetector) {
                 if (patch.meetingEnabled) meetingDetector.start();
                 else meetingDetector.stop();
@@ -1258,6 +1354,13 @@ function registerIpc() {
         updateTray();
     });
     ipcMain.on('window:hide', () => win?.hide());
+    ipcMain.handle(
+        'window:mode',
+        wrap(async (mode) => {
+            if (mode === 'attached' || mode === 'detached') applyWindowMode(mode);
+            return windowMode();
+        }),
+    );
     ipcMain.on('open:web', (_event, subPath) =>
         shell.openExternal(WEB_URL + (typeof subPath === 'string' && subPath.startsWith('/') ? subPath : '')),
     );
@@ -1307,7 +1410,13 @@ if (!app.requestSingleInstanceLock()) {
                 .then(refreshRunning)
                 .catch(() => {});
         else setTimeout(showWindow, 400); // first run: open straight into setup
+
+        // Was the window detached last time? Then open it that way again.
+        if (windowMode() === 'detached') win.once('ready-to-show', () => applyWindowMode('detached'));
     });
+
+    // Clicking the Dock icon (detached mode) brings the window back.
+    app.on('activate', () => showWindow());
 
     app.on('will-quit', () => {
         globalShortcut.unregisterAll();

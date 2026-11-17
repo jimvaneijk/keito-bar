@@ -37,10 +37,25 @@ contextBridge.exposeInMainWorld('keito', {
     updateInstall: () => ipcRenderer.send('update:install'),
     setTodayTotal: (hours) => ipcRenderer.send('tray:today', hours),
     hide: () => ipcRenderer.send('window:hide'),
+    setWindowMode: (mode) => call('window:mode', mode),
+    windowMode: () => call('window:mode'),
     openWeb: (subPath) => ipcRenderer.send('open:web', subPath),
     quit: () => ipcRenderer.send('app:quit'),
     on: (channel, listener) => {
-        if (!['window:shown', 'data:changed', 'nav', 'idle', 'nudge', 'update', 'meeting'].includes(channel)) return;
+        if (
+            ![
+                'window:shown',
+                'data:changed',
+                'nav',
+                'idle',
+                'nudge',
+                'update',
+                'meeting',
+                'window:mode',
+                'prefs:changed',
+            ].includes(channel)
+        )
+            return;
         ipcRenderer.on(channel, (_event, ...args) => listener(...args));
     },
 });

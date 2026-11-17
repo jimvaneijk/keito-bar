@@ -1175,6 +1175,9 @@ document.addEventListener('click', (event) => {
 
     const action = target.closest('[data-act]')?.dataset.act;
     switch (action) {
+        case 'toggle-detach':
+            keitoBridge.setWindowMode(state.windowMode === 'detached' ? 'attached' : 'detached');
+            break;
         case 'prev-week':
             selectDay(addDays(state.selected, -7));
             break;
@@ -1431,6 +1434,11 @@ document.addEventListener('keydown', (event) => {
     if (state.form && event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         submitForm();
+        return;
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'w') {
+        event.preventDefault();
+        keitoBridge.hide(); // ⌘W closes the (detached) window; the menubar icon brings it back
         return;
     }
     if ((event.metaKey || event.ctrlKey) && event.key === ',') {
@@ -1933,6 +1941,31 @@ async function checkUpdates() {
 
 keitoBridge.on('update', (updateInfo) => renderUpdate(updateInfo));
 keitoBridge.updateStatus().then((result) => result.ok && renderUpdate(result.data));
+
+// ---------------------------------------------------------------- window mode (menubar ↔ losgemaakt)
+
+function applyWindowModeUi(mode) {
+    state.windowMode = mode;
+    const detached = mode === 'detached';
+    document.body.classList.toggle('detached', detached);
+    // SVG elements have no .hidden property: toggle the attribute itself.
+    findElement('#icon-detach').toggleAttribute('hidden', detached);
+    findElement('#icon-attach').toggleAttribute('hidden', !detached);
+    const label = detached ? 'Terugzetten in menubalk' : 'Losmaken van menubalk';
+    findElement('#btn-detach').title = label;
+    findElement('#btn-detach').setAttribute('aria-label', label);
+}
+
+keitoBridge.on('window:mode', (mode) => applyWindowModeUi(mode));
+keitoBridge.windowMode().then((result) => result.ok && applyWindowModeUi(result.data));
+
+// Settings changed from the menubar menu (e.g. "Altijd bovenop").
+keitoBridge.on('prefs:changed', async () => {
+    const result = await keitoBridge.prefsGet();
+    if (!result.ok) return;
+    Object.assign(state.prefs, result.data);
+    syncPrefControls();
+});
 
 // Window re-opened from the menubar: refresh, and follow "today" across midnight.
 keitoBridge.on('window:shown', () => {
