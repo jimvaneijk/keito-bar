@@ -24,6 +24,9 @@ contextBridge.exposeInMainWorld('keito', {
     jiraTokenPage: () => ipcRenderer.send('jira:tokens'),
     idleGet: () => call('idle:get'),
     idleResolve: (action) => call('idle:resolve', action),
+    meetingGet: () => call('meeting:get'),
+    meetingResolve: (action, payload) => call('meeting:resolve', { action, payload }),
+    meetingTest: () => call('meeting:test'),
     nudgeGet: () => call('nudge:get'),
     nudgeResolve: (action) => call('nudge:resolve', action),
     nudgeTest: (type) => call('nudge:test', type),
@@ -35,7 +38,7 @@ contextBridge.exposeInMainWorld('keito', {
     openWeb: (subPath) => ipcRenderer.send('open:web', subPath),
     quit: () => ipcRenderer.send('app:quit'),
     on: (channel, listener) => {
-        if (!['window:shown', 'data:changed', 'nav', 'idle', 'nudge', 'update'].includes(channel)) return;
+        if (!['window:shown', 'data:changed', 'nav', 'idle', 'nudge', 'update', 'meeting'].includes(channel)) return;
         ipcRenderer.on(channel, (_event, ...args) => listener(...args));
     },
 });

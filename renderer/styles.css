@@ -1252,3 +1252,27 @@ select:focus {
     text-align: center;
     line-height: 1.5;
 }
+
+/* ------------------------------------------------------------ meetings */
+.meeting-card {
+    margin-bottom: 4px;
+}
+.meeting-card b {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.meeting-note {
+    margin: 0 0 8px;
+    line-height: 1.45;
+}
+.meeting-support {
+    margin: 2px 0 10px;
+    line-height: 1.45;
+}
+.ellipsis {
+    max-width: 170px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

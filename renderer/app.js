@@ -431,6 +431,10 @@ async function openForm(entry, prefill = {}) {
 }
 
 function closeForm() {
+    if (state.meetingContext) {
+        keitoBridge.meetingResolve('ignore');
+        state.meetingContext = null;
+    }
     state.form = null;
     findElement('#view-form').hidden = true;
     closeCombo();
@@ -678,7 +682,7 @@ async function submitForm() {
                 findElement('#f-duration').focus();
                 return;
             }
-            await run(
+            const created = await run(
                 keitoBridge.create({
                     ...base,
                     spent_date: form.date,
@@ -688,6 +692,18 @@ async function submitForm() {
                 }),
             );
             toast('Timer gestart');
+            if (state.meetingContext) {
+                const taskName = taskSel.selectedOptions[0]?.textContent || null;
+                const project = state.projectsById.get(form.projectId);
+                keitoBridge.meetingResolve('session', {
+                    entryId: created?.id,
+                    projectId: form.projectId,
+                    taskId: taskSel.value,
+                    projectName: project?.name || null,
+                    taskName,
+                });
+                state.meetingContext = null;
+            }
         } else {
             await run(
                 keitoBridge.create({
@@ -698,6 +714,10 @@ async function submitForm() {
                 }),
             );
             toast('Toegevoegd');
+        }
+        if (state.meetingContext) {
+            keitoBridge.meetingResolve('ignore'); // booked as a fixed duration: no "meeting over" question
+            state.meetingContext = null;
         }
         closeForm();
         invalidateWeeks();
@@ -950,7 +970,32 @@ function setAccent(hex, { live = false } = {}) {
     setAccent.t = setTimeout(() => keitoBridge.prefsSet({ accent: hex }).catch(() => {}), 250); // colour picker fires a lot
 }
 
+const MEETING_SUPPORT_TEXT = {
+    yes: 'Werkt met Google Meet, Microsoft Teams, Zoom, Slack-huddles, FaceTime en Webex. Voor Meet en Teams in de browser vraagt macOS één keer of Keito Bar je browser mag lezen.',
+    unknown:
+        'Werkt met Google Meet, Microsoft Teams, Zoom, Slack-huddles, FaceTime en Webex. Voor Meet en Teams in de browser vraagt macOS één keer of Keito Bar je browser mag lezen.',
+    macos: 'Meetings herkennen werkt vanaf macOS 14 (Sonoma).',
+    'helper-missing': 'Meetingdetectie is niet meegebouwd in deze versie (Swift-compiler ontbrak bij het bouwen).',
+    'helper-failed': 'Meetingdetectie kon niet starten.',
+};
+
+function syncMeetingSettings() {
+    const support = state.prefs.meetingSupport || 'unknown';
+    const supportElement = findElement('#meeting-support');
+    if (supportElement) supportElement.textContent = MEETING_SUPPORT_TEXT[support] || MEETING_SUPPORT_TEXT.unknown;
+    const defaults = state.prefs.meetingDefaults;
+    const row = findElement('#meeting-default-row');
+    if (row) {
+        row.hidden = !defaults;
+        if (defaults)
+            findElement('#meeting-default').textContent = [defaults.projectName, defaults.taskName]
+                .filter(Boolean)
+                .join(' · ');
+    }
+}
+
 function syncPrefControls() {
+    syncMeetingSettings();
     renderSwatches();
     document
         .querySelectorAll('[data-pref="timeFormat"]')
@@ -1007,6 +1052,8 @@ async function boot() {
     if (idle.ok && idle.data) showIdle(idle.data);
     const nudge = await keitoBridge.nudgeGet();
     if (nudge.ok && nudge.data) showNudge(nudge.data);
+    const meeting = await keitoBridge.meetingGet();
+    if (meeting.ok && meeting.data) showMeeting(meeting.data);
 }
 
 function enterMain() {
@@ -1151,6 +1198,14 @@ document.addEventListener('click', (event) => {
         case 'update-install':
             keitoBridge.updateInstall();
             break;
+        case 'test-meeting':
+            run(keitoBridge.meetingTest()).catch(() => {});
+            break;
+        case 'meeting-forget':
+            setPref({ meetingDefaults: null });
+            state.prefs.meetingDefaults = null;
+            syncPrefControls();
+            break;
         case 'test-nudge': {
             const type = target.closest('[data-act]').dataset.type;
             run(keitoBridge.nudgeTest(type)).catch(() => {});
@@ -1278,6 +1333,20 @@ findElement('#jira-list').addEventListener('mousedown', (event) => event.prevent
 
 document.addEventListener('keydown', (event) => {
     const inField = event.target.matches('input, textarea, select');
+
+    if (state.meeting && !state.idle) {
+        if (/^[1-9]$/.test(event.key) && !event.metaKey && !event.ctrlKey) {
+            const meetingAction = state.meeting.actions?.[+event.key - 1];
+            if (meetingAction) {
+                event.preventDefault();
+                resolveMeetingAction(meetingAction.id);
+            }
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            keitoBridge.hide(); // the question stays until answered or the meeting ends
+        }
+        return;
+    }
 
     if (state.nudge && !state.idle) {
         if (/^[1-9]$/.test(event.key) && !event.metaKey && !event.ctrlKey) {
@@ -1581,6 +1650,145 @@ document.addEventListener(
 
 keitoBridge.on('nudge', (nudge) => showNudge(nudge));
 
+// ---------------------------------------------------------------- meetings
+
+const ICON_VIDEO =
+    '<svg viewBox="0 0 24 24" stroke-width="2"><rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="m16 10.5 5-3v9l-5-3z"/></svg>';
+const ICON_CHECK_CIRCLE =
+    '<svg viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.8 2.8L16.5 9.5"/></svg>';
+
+function meetingLabel(meeting) {
+    return meeting.title || meeting.source;
+}
+
+function showMeeting(pending) {
+    if (!pending || !state.me) return;
+    const { meeting } = pending;
+    const actions = [];
+    findElement('#meeting-name').textContent = meetingLabel(meeting);
+    const sourceParts = meeting.title ? [meeting.source] : [];
+    if (meeting.appName && meeting.appName !== meeting.source) sourceParts.push(meeting.appName);
+    const note = findElement('#meeting-note');
+
+    if (pending.phase === 'start') {
+        findElement('#meeting-mark').innerHTML = ICON_VIDEO;
+        findElement('#meeting-title').textContent = 'Het lijkt erop dat je in een meeting zit';
+        findElement('#meeting-text').textContent = 'Wil je deze apart tracken?';
+        sourceParts.push(`sinds ${formatClock(meeting.startedAt)}`);
+        const defaults = pending.defaults;
+        if (defaults) {
+            const label = [defaults.projectName, defaults.taskName].filter(Boolean).join(' · ') || 'meetingproject';
+            actions.push({ id: 'track', label: `Start meetingtimer · ${label}`, primary: true });
+        }
+        actions.push({
+            id: 'choose',
+            label: defaults ? 'Ander project kiezen…' : 'Kies project en start timer…',
+            primary: !defaults,
+        });
+        if (pending.running) {
+            actions.push({ id: 'ignore', label: `Hoort bij ${pending.running.projectName || 'mijn huidige timer'}` });
+        }
+        actions.push({ id: 'ignore', label: 'Niet tracken' });
+        note.hidden = !pending.running;
+        if (pending.running)
+            note.textContent = `Je timer voor ${pending.running.projectName || 'je huidige werk'} pauzeert zolang de meeting loopt.`;
+    } else {
+        findElement('#meeting-mark').innerHTML = ICON_CHECK_CIRCLE;
+        findElement('#meeting-title').textContent = 'Meeting afgelopen';
+        findElement('#meeting-text').textContent = `Je meetingtimer liep ${formatAwayDuration(pending.minutes / 60)}.`;
+        if (pending.previous) {
+            actions.push({
+                id: 'stop-resume',
+                label: `Stop en hervat ${pending.previous.projectName || 'vorige timer'}`,
+                primary: true,
+            });
+            actions.push({ id: 'stop', label: 'Alleen meetingtimer stoppen' });
+        } else {
+            actions.push({ id: 'stop', label: 'Stop meetingtimer', primary: true });
+        }
+        actions.push({ id: 'keep', label: 'Laat doorlopen' });
+        note.hidden = true;
+    }
+    findElement('#meeting-source').textContent = sourceParts.join(' · ');
+
+    state.meeting = { ...pending, actions };
+    findElement('#meeting-actions').innerHTML = actions
+        .map(
+            (meetingAction, index) =>
+                `<button class="${meetingAction.primary ? 'primary-btn' : 'ghost-btn'}" data-meeting="${index}"><span class="label">${escapeHtml(meetingAction.label)}</span> <kbd>${index + 1}</kbd></button>`,
+        )
+        .join('');
+    closeCombo();
+    closeJira();
+    findElement('#view-meeting').hidden = false;
+}
+
+function hideMeeting() {
+    state.meeting = null;
+    findElement('#view-meeting').hidden = true;
+}
+
+async function resolveMeetingAction(actionId) {
+    const pending = state.meeting;
+    if (!pending || state.busy) return;
+    hideMeeting();
+
+    if (actionId === 'choose') {
+        // The form creates the meeting timer; submitForm() links it to the meeting.
+        if (state.view !== 'main') show('main');
+        state.selected = todayIsoDate();
+        state.weekStart = mondayOf(state.selected);
+        await openForm(null, {
+            notes: pending.meeting.title
+                ? `${pending.meeting.title} · ${pending.meeting.source}`
+                : pending.meeting.source,
+        });
+        state.meetingContext = pending;
+        findElement('#duration-hint').textContent =
+            'Leeg laten: de meetingtimer start nu en je huidige timer pauzeert.';
+        return;
+    }
+
+    state.busy = true;
+    const payload = actionId === 'track' ? pending.defaults : undefined;
+    const result = await keitoBridge.meetingResolve(actionId, payload);
+    state.busy = false;
+    if (!result.ok) {
+        toast(result.error.message, 'error');
+        return;
+    }
+    if (result.data?.test) {
+        toast('Dit was een voorbeeld — er is niets veranderd');
+        return;
+    }
+    const messages = {
+        track: 'Meetingtimer gestart',
+        'stop-resume': `Meetingtimer gestopt, ${pending.previous?.projectName || 'vorige timer'} loopt weer`,
+        stop: 'Meetingtimer gestopt',
+    };
+    if (messages[actionId]) toast(messages[actionId]);
+    if (actionId === 'keep' || actionId === 'ignore') keitoBridge.hide();
+    if (state.view !== 'main') show('main');
+    state.selected = todayIsoDate();
+    state.weekStart = mondayOf(state.selected);
+    invalidateWeeks();
+    await loadWeek({ silent: true });
+}
+
+document.addEventListener(
+    'click',
+    (event) => {
+        const button = event.target.closest('[data-meeting]');
+        if (!button || !state.meeting) return;
+        event.stopPropagation();
+        const meetingAction = state.meeting.actions[+button.dataset.meeting];
+        if (meetingAction) resolveMeetingAction(meetingAction.id);
+    },
+    true,
+);
+
+keitoBridge.on('meeting', (pending) => (pending ? showMeeting(pending) : hideMeeting()));
+
 // ---------------------------------------------------------------- updates
 
 function renderUpdate(updateInfo) {
@@ -1625,6 +1833,10 @@ keitoBridge.on('window:shown', () => {
     if (!state.nudge)
         keitoBridge.nudgeGet().then((result) => {
             if (result.ok && result.data) showNudge(result.data);
+        });
+    if (!state.meeting && !state.meetingContext)
+        keitoBridge.meetingGet().then((result) => {
+            if (result.ok && result.data) showMeeting(result.data);
         });
     const today = todayIsoDate();
     if (state.lastSeenToday !== today) {

@@ -16,6 +16,7 @@ const path = require('path');
 const fs = require('fs');
 const { KeitoApi, KeitoError, WEB_URL } = require('./src/keito-api');
 const { JiraApi, JiraError, normalizeSite } = require('./src/jira-api');
+const { MeetingDetector } = require('./src/meeting-detector');
 
 // electron-updater is optional in development (npm start works without it).
 let autoUpdater = null;
@@ -31,6 +32,7 @@ const TOGGLE_SHORTCUT = 'CommandOrControl+Shift+K';
 const isMac = process.platform === 'darwin';
 const IDLE_CHOICES = [5, 10, 15, 20, 30, 60];
 const MIN_HOURS_CHOICES = [4, 5, 6, 7, 7.5, 8];
+const MEETING_DELAY_CHOICES = [1, 2, 3, 5];
 const SNOOZE_MS = 15 * 60e3;
 
 let tray = null;
@@ -74,6 +76,10 @@ function prefs() {
         workdays: Array.isArray(config.workdays)
             ? config.workdays.filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
             : [1, 2, 3, 4, 5],
+        meetingEnabled: config.meetingEnabled !== false,
+        meetingDelayMinutes: MEETING_DELAY_CHOICES.includes(config.meetingDelayMinutes)
+            ? config.meetingDelayMinutes
+            : 1,
     };
 }
 function validTime(time) {
@@ -255,9 +261,11 @@ function updateTray() {
     tray.setToolTip(
         idlePending
             ? 'Keito · je was even weg — klik om de idle-tijd te verwerken'
-            : isRunning
-              ? `Keito · ${project || 'timer loopt'} · ${formatHours(liveHours(running))}`
-              : 'Keito',
+            : meetingPending
+              ? 'Keito · meeting herkend — klik om te kiezen'
+              : isRunning
+                ? `Keito · ${project || 'timer loopt'} · ${formatHours(liveHours(running))}`
+                : 'Keito',
     );
 }
 
@@ -333,7 +341,8 @@ function markAway(at) {
 }
 
 function checkIdle() {
-    if (!running || !prefs().idleEnabled) {
+    // In a call you don't touch mouse or keyboard, but you're not away.
+    if (!running || !prefs().idleEnabled || meetingDetector?.inCall) {
         awaySince = null;
         return;
     }
@@ -587,6 +596,177 @@ function friendlyUpdateError(error) {
     return 'Controleren op updates mislukte.';
 }
 
+// ---------------------------------------------------------------- meetings
+//
+// src/meeting-detector.js tells us when you're in a Google Meet / Teams / Zoom / … call.
+// Start: ask whether to track it separately (pausing the running timer).
+// End:   if we started a meeting timer, offer to stop it and resume the previous one.
+
+let meetingDetector = null;
+let meetingPending = null; // { phase: 'start'|'end', meeting, … } — the open question
+let meetingSession = null; // { meetingId, entryId, previous } — a meeting timer we started
+
+function micMonitorPath() {
+    return app.isPackaged
+        ? path.join(process.resourcesPath, 'bin', 'mic-monitor')
+        : path.join(__dirname, 'resources', 'bin', 'mic-monitor');
+}
+
+let meetingUnsupportedReason = null;
+function meetingSupportStatus() {
+    if (meetingUnsupportedReason) return meetingUnsupportedReason; // 'macos' | 'helper-missing' | 'helper-failed'
+    if (meetingDetector?.supported) return 'yes';
+    return 'unknown';
+}
+
+function setupMeetingDetection() {
+    meetingDetector = new MeetingDetector({
+        helperPath: micMonitorPath(),
+        startDelayMs: () => prefs().meetingDelayMinutes * 60_000,
+    });
+    meetingDetector.on('unsupported', (reason) => {
+        meetingUnsupportedReason = reason;
+    });
+    meetingDetector.on('start', (meeting) => onMeetingStart(meeting).catch(() => {}));
+    meetingDetector.on('end', (meeting) => onMeetingEnd(meeting).catch(() => {}));
+    if (prefs().meetingEnabled) meetingDetector.start();
+}
+
+function summarizeEntry(entry) {
+    if (!entry) return null;
+    const { id, projectId, taskId, projectName, clientName, taskName, spentDate, notes } = entry;
+    return { id, projectId, taskId, projectName, clientName, taskName, spentDate, notes };
+}
+
+function meetingDefaults() {
+    const config = readConfig();
+    if (!config.meetingProjectId || !config.meetingTaskId) return null;
+    return {
+        projectId: config.meetingProjectId,
+        taskId: config.meetingTaskId,
+        projectName: config.meetingProjectName || null,
+        taskName: config.meetingTaskName || null,
+    };
+}
+
+function rememberMeetingProject({ projectId, taskId, projectName, taskName }) {
+    if (!projectId || !taskId) return;
+    const config = readConfig();
+    Object.assign(config, {
+        meetingProjectId: String(projectId),
+        meetingTaskId: String(taskId),
+        meetingProjectName: projectName || null,
+        meetingTaskName: taskName || null,
+    });
+    writeConfig(config);
+}
+
+function meetingNotes(meeting) {
+    return meeting.title ? `${meeting.title} · ${meeting.source}` : meeting.source;
+}
+
+function openMeeting(pending) {
+    meetingPending = pending;
+    updateTray();
+    showWindow();
+    send('meeting', pending);
+}
+
+async function onMeetingStart(meeting) {
+    if (!api || !me || !prefs().meetingEnabled) return;
+    await refreshRunning();
+    openMeeting({
+        phase: 'start',
+        meeting,
+        running: summarizeEntry(running?.entry),
+        defaults: meetingDefaults(),
+    });
+}
+
+async function onMeetingEnd(meeting) {
+    // Never answered the start question: the meeting is over, so the question is moot.
+    if (meetingPending?.phase === 'start' && meetingPending.meeting.id === meeting.id) {
+        meetingPending = null;
+        updateTray();
+        send('meeting', null);
+        return;
+    }
+    const session = meetingSession;
+    if (!session || session.meetingId !== meeting.id) return;
+    await refreshRunning();
+    if (!running || running.entry.id !== session.entryId) {
+        meetingSession = null; // already stopped (by you, or elsewhere)
+        return;
+    }
+    openMeeting({
+        phase: 'end',
+        meeting,
+        entryId: session.entryId,
+        minutes: Math.max(1, Math.round((meeting.endedAt - meeting.startedAt) / 60_000)),
+        previous: session.previous,
+    });
+}
+
+async function resolveMeeting(action, payload = {}) {
+    const pending = meetingPending;
+    if (!pending) return { action: 'none' };
+    meetingPending = null;
+    updateTray();
+    if (pending.meeting.test) return { action, test: true }; // the "Probeer" preview changes nothing
+
+    const client = requireApi();
+    try {
+        if (pending.phase === 'start') {
+            if (action === 'track') {
+                const entry = await client.create({
+                    project_id: payload.projectId,
+                    task_id: payload.taskId,
+                    spent_date: toLocalIsoDate(),
+                    notes: meetingNotes(pending.meeting),
+                    is_running: true,
+                    replace_running: true,
+                });
+                rememberMeetingProject(payload);
+                meetingSession = { meetingId: pending.meeting.id, entryId: entry?.id, previous: pending.running };
+            } else if (action === 'session') {
+                // You picked a project in the form and the meeting timer was created there.
+                meetingSession = {
+                    meetingId: pending.meeting.id,
+                    entryId: String(payload.entryId),
+                    previous: pending.running,
+                };
+                rememberMeetingProject(payload);
+            }
+            // 'ignore': nothing to do — no end question for this meeting either.
+        } else if (action === 'stop' || action === 'stop-resume') {
+            await client.stop(pending.entryId);
+            const previous = pending.previous;
+            if (action === 'stop-resume' && previous) {
+                if (previous.spentDate === toLocalIsoDate()) await client.restart(previous.id);
+                else
+                    await client.create({
+                        project_id: previous.projectId,
+                        task_id: previous.taskId,
+                        notes: previous.notes || '',
+                        spent_date: toLocalIsoDate(),
+                        is_running: true,
+                        replace_running: true,
+                    });
+            }
+            meetingSession = null;
+        } else {
+            meetingSession = null; // 'keep': let the meeting timer run
+        }
+    } catch (error) {
+        if (action === 'track') meetingPending = pending; // ask again rather than lose the question
+        throw error;
+    } finally {
+        running = null;
+        await refreshRunning();
+    }
+    return { action };
+}
+
 // ---------------------------------------------------------------- window
 
 function createWindow() {
@@ -718,6 +898,8 @@ function registerIpc() {
             launchAtLogin: app.getLoginItemSettings().openAtLogin,
             shortcut: TOGGLE_SHORTCUT,
             encrypted: readConfig().tokenEncrypted === true,
+            meetingSupport: meetingSupportStatus(),
+            meetingDefaults: meetingDefaults(),
         })),
     );
 
@@ -748,10 +930,21 @@ function registerIpc() {
                     if (!state.endAnswered) delete state.endDone;
                 }
             }
+            if (typeof patch.meetingEnabled === 'boolean') config.meetingEnabled = patch.meetingEnabled;
+            if (MEETING_DELAY_CHOICES.includes(Number(patch.meetingDelayMinutes)))
+                config.meetingDelayMinutes = Number(patch.meetingDelayMinutes);
+            if (patch.meetingDefaults === null) {
+                for (const key of ['meetingProjectId', 'meetingTaskId', 'meetingProjectName', 'meetingTaskName'])
+                    delete config[key];
+            }
             if (patch.accent === null) delete config.accent;
             else if (typeof patch.accent === 'string' && /^#[0-9a-f]{6}$/i.test(patch.accent))
                 config.accent = patch.accent.toLowerCase();
             writeConfig(config);
+            if (typeof patch.meetingEnabled === 'boolean' && meetingDetector) {
+                if (patch.meetingEnabled) meetingDetector.start();
+                else meetingDetector.stop();
+            }
             if (typeof patch.launchAtLogin === 'boolean')
                 app.setLoginItemSettings({ openAtLogin: patch.launchAtLogin });
             updateTray();
@@ -903,6 +1096,30 @@ function registerIpc() {
         if (updaterAvailable() && update.state === 'ready') setImmediate(() => autoUpdater.quitAndInstall(false, true));
     });
 
+    // ---- Meetings
+    ipcMain.handle(
+        'meeting:get',
+        wrap(async () => meetingPending),
+    );
+    ipcMain.handle(
+        'meeting:resolve',
+        wrap(async ({ action, payload }) => resolveMeeting(action, payload)),
+    );
+    ipcMain.handle(
+        'meeting:test',
+        wrap(async () => {
+            requireApi();
+            await refreshRunning();
+            openMeeting({
+                phase: 'start',
+                meeting: meetingDetector.simulate(),
+                running: summarizeEntry(running?.entry),
+                defaults: meetingDefaults(),
+            });
+            return true;
+        }),
+    );
+
     // ---- Day reminders
     ipcMain.handle(
         'nudge:get',
@@ -968,6 +1185,7 @@ if (!app.requestSingleInstanceLock()) {
         registerIpc();
         jira = loadJira();
         setupUpdater();
+        setupMeetingDetection();
         hoursIncludeRunning = readConfig().hoursIncludeRunning;
         createWindow();
 
@@ -1003,6 +1221,7 @@ if (!app.requestSingleInstanceLock()) {
         clearInterval(runningPoll);
         clearInterval(idlePoll);
         clearInterval(reminderPoll);
+        meetingDetector?.stop();
     });
     app.on('window-all-closed', (event) => event.preventDefault());
 }

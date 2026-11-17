@@ -233,6 +233,34 @@
                         </div>
                     </div>
 
+                    <div class="card meetings">
+                        <div class="row"><span class="strong">Meetings</span></div>
+                        <label class="row">
+                            <span>Meetings herkennen</span>
+                            <input type="checkbox" class="switch" data-pref="meetingEnabled" />
+                        </label>
+                        <div class="row sub" data-dep="meetingEnabled">
+                            <span>Vragen na</span>
+                            <span class="row-end">
+                                <select data-pref="meetingDelayMinutes" class="compact-select">
+                                    <option value="1">1 min</option>
+                                    <option value="2">2 min</option>
+                                    <option value="3">3 min</option>
+                                    <option value="5">5 min</option>
+                                </select>
+                                <button class="link-btn" data-act="test-meeting">Probeer</button>
+                            </span>
+                        </div>
+                        <div class="row sub" data-dep="meetingEnabled" id="meeting-default-row" hidden>
+                            <span>Meetingproject</span>
+                            <span class="row-end">
+                                <span id="meeting-default" class="ellipsis"></span>
+                                <button class="link-btn" data-act="meeting-forget">Vergeet</button>
+                            </span>
+                        </div>
+                        <p id="meeting-support" class="muted small meeting-support"></p>
+                    </div>
+
                     <div class="card reminders">
                         <div class="row"><span class="strong">Herinneringen</span></div>
                         <label class="row">
@@ -475,11 +503,32 @@
                 </div>
             </section>
 
+            <!-- Meeting detected (start) / meeting over (end) -->
+            <section
+                id="view-meeting"
+                class="sheet idle-sheet"
+                hidden
+                role="alertdialog"
+                aria-labelledby="meeting-title"
+            >
+                <div class="idle">
+                    <div class="idle-mark" id="meeting-mark"></div>
+                    <h2 id="meeting-title"></h2>
+                    <p id="meeting-text" class="muted"></p>
+                    <div id="meeting-card" class="idle-entry meeting-card">
+                        <b id="meeting-name"></b>
+                        <span id="meeting-source" class="muted"></span>
+                    </div>
+                    <p id="meeting-note" class="muted small meeting-note" hidden></p>
+                    <div id="meeting-actions" class="idle-actions"></div>
+                </div>
+            </section>
+
             <section id="view-loading" class="view center-view">
                 <div class="spinner" aria-label="Laden"></div>
                 <p id="loading-hint" class="loading-hint muted small" hidden>
-                    Duurt het lang? Kijk of macOS om toegang tot je sleutelhanger vraagt (soms staat die melding
-                    achter andere vensters). Kies dan
+                    Duurt het lang? Kijk of macOS om toegang tot je sleutelhanger vraagt (soms staat die melding achter
+                    andere vensters). Kies dan
                     <b>Altijd toestaan</b>
                     .
                 </p>

@@ -1,19 +1,25 @@
 {
     "name": "keito-bar",
     "productName": "Keito Bar",
-    "version": "0.2.1",
+    "version": "0.3.0",
     "description": "Menubar-app voor Keito tijdregistratie, met Harvest-achtige weeknavigatie.",
     "main": "main.js",
     "private": true,
     "author": "23G",
     "scripts": {
         "start": "electron .",
+        "prestart": "node build/build-mic-monitor.js",
         "dev": "electron . --inspect",
-        "check": "node --check main.js && node --check preload.js && node --check src/keito-api.js && node --check renderer/app.js",
+        "check": "node --check main.js && node --check preload.js && node --check src/keito-api.js && node --check src/jira-api.js && node --check src/meeting-detector.js && node --check renderer/app.js",
+        "build:mic-monitor": "node build/build-mic-monitor.js",
         "dist": "KEITO_ADHOC=1 CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --arm64 --publish never",
+        "predist": "node build/build-mic-monitor.js",
         "dist:universal": "KEITO_ADHOC=1 CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --universal --publish never",
+        "predist:universal": "node build/build-mic-monitor.js",
         "release": "node build/release.js",
+        "prerelease": "node build/build-mic-monitor.js",
         "release:universal": "node build/release.js --universal",
+        "prerelease:universal": "node build/build-mic-monitor.js",
         "format": "prettier --write .",
         "format:check": "prettier --check ."
     },
@@ -43,10 +49,12 @@
                 "zip"
             ],
             "extendInfo": {
-                "LSUIElement": true
+                "LSUIElement": true,
+                "NSAppleEventsUsageDescription": "Keito Bar kijkt in je browser of je in een Google Meet- of Teams-meeting zit, zodat je die apart kunt tracken."
             },
             "hardenedRuntime": true,
-            "artifactName": "Keito-Bar-${version}-${arch}.${ext}"
+            "artifactName": "Keito-Bar-${version}-${arch}.${ext}",
+            "minimumSystemVersion": "12.0"
         },
         "afterPack": "build/adhoc-sign.js",
         "publish": [
@@ -55,6 +63,15 @@
                 "owner": "jimvaneijk",
                 "repo": "keito-bar",
                 "releaseType": "release"
+            }
+        ],
+        "extraResources": [
+            {
+                "from": "resources/bin",
+                "to": "bin",
+                "filter": [
+                    "mic-monitor"
+                ]
             }
         ]
     }

@@ -2,7 +2,7 @@
 
 Tijd schrijven in Keito vanuit je menubalk. Bovenin zie je je week en je klikt (of pijltje
 links/rechts) zo door de dagen, net als in Harvest. Zonder "recente projecten"-ruis, mét
-Jira-tickets, idle-detectie en een seintje als je vergeet je timer aan te zetten.
+Jira-tickets, meetingherkenning, idle-detectie en een seintje als je vergeet je timer aan te zetten.
 
 <p align="center">
   <img src="docs/screenshots/overzicht.png" alt="Keito Bar weekoverzicht, licht en donker" width="720">
@@ -101,6 +101,32 @@ Standaard na 10 minuten; aan te passen in Instellingen (5 min – 1 uur).
 
 <br clear="right">
 
+### Meetings
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/meeting.png" alt="Meeting herkend"></td>
+    <td width="50%"><img src="docs/screenshots/meeting-einde.png" alt="Meeting afgelopen"></td>
+  </tr>
+  <tr>
+    <td><b>Meeting herkend</b>: na een minuut in gesprek vraagt Keito Bar of je de meeting apart wilt tracken. Je lopende timer pauzeert zolang de meeting loopt.</td>
+    <td><b>Meeting afgelopen</b>: stop de meetingtimer en ga met één klik verder met je vorige timer.</td>
+  </tr>
+</table>
+
+Herkend worden **Google Meet** en **Microsoft Teams** (app én browser), **Zoom**, **Slack-huddles**,
+**FaceTime** en **Webex**. Keito Bar kijkt welke app je microfoon gebruikt (niet wát je zegt;
+er wordt niets opgenomen). Gebruikt je browser de microfoon, dan zoekt Keito Bar het tabblad
+met Google Meet of Teams en neemt de naam van de meeting over.
+
+- **Eerste keer**: kies je project en taak voor meetings; daarna is het één klik
+  (*Start meetingtimer · Interne meetings · Overleg*).
+- **Browser**: de eerste keer vraagt macOS of Keito Bar je browser mag "besturen". Dat is
+  alleen om de tabbladen te lezen; kies **OK**. Zonder toestemming werkt het ook, maar dan
+  zonder de naam van de meeting.
+- Tijdens een gesprek telt dat niet als idle-tijd.
+- Aan/uit en na hoeveel minuten (1–5) staan in **Instellingen → Meetings**. Vereist macOS 14 of nieuwer.
+
 ### Herinneringen
 
 <table>
@@ -163,6 +189,11 @@ macOS vraagt dan eenmalig om toegang tot je sleutelhanger ("Keito Bar wil vertro
 gegevens gebruiken…"). Die melding staat soms achter andere vensters: zoek hem via Mission
 Control, vul je Mac-wachtwoord in en kies **Altijd toestaan**.
 
+**Mijn meeting wordt niet herkend.**
+Controleer *Instellingen → Meetings* (vereist macOS 14). Zit je meeting in de browser, kijk
+dan bij *Systeeminstellingen → Privacy en beveiliging → Automatisering* of Keito Bar je
+browser mag besturen. Firefox kan niet worden uitgelezen; daar krijg je een algemene melding.
+
 **"Keito accepteert de API key of Company ID niet."**
 Controleer of je een *full-access integration key* gebruikt (geen sync key) en of de
 Company ID bij hetzelfde bedrijf hoort.
@@ -208,6 +239,9 @@ npm run release    # gesigneerd + genotariseerd + gepubliceerd op GitHub Release
      --apple-id jouw@appleid.nl --team-id ABCDE12345 --password xxxx-xxxx-xxxx-xxxx
    ```
 3. **GitHub**: `brew install gh && gh auth login`. De repo staat in `build.publish` in `package.json`.
+4. **Xcode Command Line Tools** (`xcode-select --install`) voor de meetingdetectie. Die wordt
+   automatisch gebouwd bij `npm start`, `npm run dist` en `npm run release`; zonder Swift-compiler
+   werkt de app gewoon, maar zonder meetingherkenning.
 
 **Nieuwe versie uitbrengen**
 
@@ -227,8 +261,10 @@ zegt precies wat er ontbreekt.
 | `preload.js` | Veilige brug naar de interface (contextIsolation, sandbox) |
 | `src/keito-api.js` | Keito API v2-client (`https://app.keito.ai/api/v2`, Bearer + `Keito-Account-Id`) |
 | `src/jira-api.js` | Jira Cloud-client (issue picker + JQL, Basic auth met API-token) |
+| `src/meeting-detector.js` | Herkent meetings: welke app gebruikt de microfoon + browsertabbladen |
+| `native/mic-monitor.swift` | Klein Swift-programma dat meldt welke apps de microfoon gebruiken (macOS 14+) |
 | `renderer/` | Interface (vanilla HTML/CSS/JS) |
-| `build/` | Release-script en ad-hoc-signering voor testbuilds |
+| `build/` | Release-script, bouwen van mic-monitor, entitlements en ad-hoc-signering voor testbuilds |
 | `docs/screenshots/` | Afbeeldingen voor deze README (gemaakt met voorbeelddata) |
 
 ### Codestijl
