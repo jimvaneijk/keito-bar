@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld('keito', {
     jiraTokenPage: () => ipcRenderer.send('jira:tokens'),
     idleGet: () => call('idle:get'),
     idleResolve: (action) => call('idle:resolve', action),
+    budgets: (force) => call('budgets:get', force),
+    budget: (projectId) => call('budget:project', projectId),
     meetingGet: () => call('meeting:get'),
     meetingResolve: (action, payload) => call('meeting:resolve', { action, payload }),
     meetingTest: () => call('meeting:test'),

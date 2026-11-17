@@ -2,7 +2,7 @@
 
 Tijd schrijven in Keito vanuit je menubalk. Bovenin zie je je week en je klikt (of pijltje
 links/rechts) zo door de dagen, net als in Harvest. Zonder "recente projecten"-ruis, mét
-Jira-tickets, meetingherkenning, idle-detectie en een seintje als je vergeet je timer aan te zetten.
+Jira-tickets, meetingherkenning, budgetsignalen, idle-detectie en een seintje als je vergeet je timer aan te zetten.
 
 <p align="center">
   <img src="docs/screenshots/overzicht.png" alt="Keito Bar weekoverzicht, licht en donker" width="720">
@@ -126,6 +126,25 @@ met Google Meet of Teams en neemt de naam van de meeting over.
   zonder de naam van de meeting.
 - Tijdens een gesprek telt dat niet als idle-tijd.
 - Aan/uit en na hoeveel minuten (1–5) staan in **Instellingen → Meetings**. Vereist macOS 14 of nieuwer.
+
+### Budget
+
+<img src="docs/screenshots/budget.png" alt="Budget in het formulier" width="300" align="right">
+
+Zit een project bijna of al over zijn budget, dan zie je dat meteen:
+
+- **In het formulier**: een balk onder het project, bijv. *Budget: 89% gebruikt · nog 13:30 uur*
+  (oranje vanaf 80%, rood boven 100%). Budgetten per maand staan als *deze maand*.
+- **Bij het starten van een timer**: *Let op: Website redesign zit op 89% van het budget*,
+  ook als je start vanuit een herinnering of meeting.
+- **In je urenlijst**: een klein percentage naast projecten boven de grens.
+
+Je ziet alleen wat je in Keito ook mag zien: **Owners en Administrators** zien alle projecten,
+**Managers** (met *View billable rates*) hun eigen projecten. **Medewerkers** zien standaard
+niets; een beheerder kan in Keito per project inzage in het geldbudget geven, dan verschijnt
+het vanzelf. De grens (70, 80 of 90%) en aan/uit staan in **Instellingen → Budget**.
+
+<br clear="right">
 
 ### Herinneringen
 

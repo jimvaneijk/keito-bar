@@ -251,9 +251,68 @@ class KeitoApi {
         );
     }
 
+    /**
+     * Budget progress for every active project, from the project budget report.
+     * Only Owners/Administrators (all projects) and Managers with "View billable rates"
+     * (their managed projects) may call this; others get a 403.
+     */
+    async projectBudgets() {
+        const rows = await this.paginate('/reports/project_budget', 'results', { is_active: true });
+        return rows.map(budgetFromReport).filter(Boolean);
+    }
+
+    /**
+     * Money-budget progress for one project. For members an admin explicitly allowed to see
+     * budgets of their assigned projects. 403/404 = no access or no money budget.
+     */
+    async projectBudgetSummary(projectId) {
+        const raw = await this.request('GET', `/projects/${encodeURIComponent(projectId)}/budget_summary`);
+        return budgetFromSummary(projectId, raw);
+    }
+
     async remove(id) {
         await this.request('DELETE', `/time_entries/${encodeURIComponent(id)}`);
     }
+}
+
+// ---- Budgets
+// budget_by: project / project_hours / task / person are hours; project_cost / task_fees are money.
+const MONEY_BUDGETS = new Set(['project_cost', 'task_fees']);
+
+function budgetProgress(fields) {
+    const { budget, spent } = fields;
+    return { ...fields, remaining: fields.remaining ?? budget - spent, percent: (spent / budget) * 100 };
+}
+
+function budgetFromReport(row) {
+    const budgetBy = String(row?.budget_by || '').toLowerCase();
+    const budget = toNumber(row?.budget);
+    if (!toId(row?.project_id) || !budget || budget <= 0 || budgetBy === 'none') return null;
+    return budgetProgress({
+        projectId: toId(row.project_id),
+        budget,
+        spent: toNumber(row.budget_spent) ?? 0,
+        remaining: toNumber(row.budget_remaining),
+        unit: MONEY_BUDGETS.has(budgetBy) ? 'money' : 'hours',
+        isMonthly: row.budget_is_monthly === true,
+        currency: null,
+        source: 'report',
+    });
+}
+
+function budgetFromSummary(projectId, raw) {
+    const budget = toNumber(raw?.budget);
+    if (!budget || budget <= 0) return null;
+    return budgetProgress({
+        projectId: String(projectId),
+        budget,
+        spent: toNumber(raw.spent) ?? 0,
+        remaining: toNumber(raw.remaining),
+        unit: raw.isHours === true ? 'hours' : 'money',
+        isMonthly: raw.isMonthly === true,
+        currency: text(raw.currency) || null,
+        source: 'summary',
+    });
 }
 
 function normalizeEntry(raw) {

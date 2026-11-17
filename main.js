@@ -33,6 +33,7 @@ const isMac = process.platform === 'darwin';
 const IDLE_CHOICES = [5, 10, 15, 20, 30, 60];
 const MIN_HOURS_CHOICES = [4, 5, 6, 7, 7.5, 8];
 const MEETING_DELAY_CHOICES = [1, 2, 3, 5];
+const BUDGET_WARN_CHOICES = [70, 80, 90];
 const SNOOZE_MS = 15 * 60e3;
 
 let tray = null;
@@ -80,6 +81,8 @@ function prefs() {
         meetingDelayMinutes: MEETING_DELAY_CHOICES.includes(config.meetingDelayMinutes)
             ? config.meetingDelayMinutes
             : 1,
+        budgetEnabled: config.budgetEnabled !== false,
+        budgetWarnPercent: BUDGET_WARN_CHOICES.includes(config.budgetWarnPercent) ? config.budgetWarnPercent : 80,
     };
 }
 function validTime(time) {
@@ -124,6 +127,7 @@ function clearCredentials() {
     api = null;
     me = null;
     running = null;
+    resetBudgets();
     updateTray();
 }
 
@@ -162,6 +166,7 @@ async function connect(creds) {
     const identity = await client.me();
     api = client;
     me = identity;
+    resetBudgets();
     return identity;
 }
 
@@ -596,6 +601,81 @@ function friendlyUpdateError(error) {
     return 'Controleren op updates mislukte.';
 }
 
+// ---------------------------------------------------------------- budgets
+//
+// Keito only shares budget progress with people who may see it in Keito itself:
+// - the project budget report: Owners/Administrators (all projects), Managers (managed projects)
+// - per-project budget_summary: members an admin explicitly allowed to see money budgets
+// Everyone else gets 403s, and Keito Bar simply shows nothing.
+
+const BUDGET_TTL_MS = 10 * 60_000;
+const budgetState = {
+    reportAccess: 'unknown', // 'yes' | 'denied' | 'unknown'
+    byProject: new Map(), // projectId -> budget (from the report)
+    summaries: new Map(), // projectId -> { budget|null, at } (from budget_summary)
+    loadedAt: 0,
+    loading: null,
+};
+
+function resetBudgets() {
+    budgetState.reportAccess = 'unknown';
+    budgetState.byProject = new Map();
+    budgetState.summaries = new Map();
+    budgetState.loadedAt = 0;
+    budgetState.loading = null;
+}
+
+const isNoAccess = (error) => error instanceof KeitoError && ['forbidden', 'not_found'].includes(error.kind);
+
+function budgetSnapshot() {
+    const budgets = Object.fromEntries(budgetState.byProject);
+    for (const [projectId, cached] of budgetState.summaries) if (cached.budget) budgets[projectId] = cached.budget;
+    return { enabled: prefs().budgetEnabled, access: budgetState.reportAccess, budgets };
+}
+
+async function loadBudgets(force = false) {
+    if (!api || !me || !prefs().budgetEnabled) return budgetSnapshot();
+    if (!force && Date.now() - budgetState.loadedAt < BUDGET_TTL_MS) return budgetSnapshot();
+    if (!budgetState.loading) {
+        budgetState.loading = (async () => {
+            try {
+                const list = await api.projectBudgets();
+                budgetState.byProject = new Map(list.map((budget) => [budget.projectId, budget]));
+                budgetState.reportAccess = 'yes';
+            } catch (error) {
+                if (isNoAccess(error)) budgetState.reportAccess = 'denied';
+                // offline etc.: keep what we had
+            } finally {
+                budgetState.loadedAt = Date.now();
+                budgetState.loading = null;
+            }
+        })();
+    }
+    await budgetState.loading;
+    return budgetSnapshot();
+}
+
+/** Budget for one project: from the report, else (for members) from budget_summary. */
+async function budgetForProject(projectId) {
+    if (!api || !me || !prefs().budgetEnabled || !projectId) return null;
+    projectId = String(projectId);
+    await loadBudgets();
+    if (budgetState.byProject.has(projectId)) return budgetState.byProject.get(projectId);
+    // The report covers everything an admin/manager may see: not in it = no budget.
+    if (budgetState.reportAccess === 'yes') return null;
+
+    const cached = budgetState.summaries.get(projectId);
+    if (cached && Date.now() - cached.at < BUDGET_TTL_MS) return cached.budget;
+    try {
+        const budget = await api.projectBudgetSummary(projectId);
+        budgetState.summaries.set(projectId, { budget, at: Date.now() });
+        return budget;
+    } catch (error) {
+        if (isNoAccess(error)) budgetState.summaries.set(projectId, { budget: null, at: Date.now() });
+        return cached?.budget ?? null;
+    }
+}
+
 // ---------------------------------------------------------------- meetings
 //
 // src/meeting-detector.js tells us when you're in a Google Meet / Teams / Zoom / … call.
@@ -900,6 +980,7 @@ function registerIpc() {
             encrypted: readConfig().tokenEncrypted === true,
             meetingSupport: meetingSupportStatus(),
             meetingDefaults: meetingDefaults(),
+            budgetAccess: budgetState.reportAccess,
         })),
     );
 
@@ -931,6 +1012,9 @@ function registerIpc() {
                 }
             }
             if (typeof patch.meetingEnabled === 'boolean') config.meetingEnabled = patch.meetingEnabled;
+            if (typeof patch.budgetEnabled === 'boolean') config.budgetEnabled = patch.budgetEnabled;
+            if (BUDGET_WARN_CHOICES.includes(Number(patch.budgetWarnPercent)))
+                config.budgetWarnPercent = Number(patch.budgetWarnPercent);
             if (MEETING_DELAY_CHOICES.includes(Number(patch.meetingDelayMinutes)))
                 config.meetingDelayMinutes = Number(patch.meetingDelayMinutes);
             if (patch.meetingDefaults === null) {
@@ -1095,6 +1179,16 @@ function registerIpc() {
     ipcMain.on('update:install', () => {
         if (updaterAvailable() && update.state === 'ready') setImmediate(() => autoUpdater.quitAndInstall(false, true));
     });
+
+    // ---- Budgets
+    ipcMain.handle(
+        'budgets:get',
+        wrap(async (force) => loadBudgets(force === true)),
+    );
+    ipcMain.handle(
+        'budget:project',
+        wrap(async (projectId) => budgetForProject(projectId)),
+    );
 
     // ---- Meetings
     ipcMain.handle(

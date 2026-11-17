@@ -1276,3 +1276,66 @@ select:focus {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+/* ------------------------------------------------------------ budgets */
+.budget-meter {
+    margin-top: -4px;
+    --budget-color: var(--run);
+}
+.budget-meter.warn {
+    --budget-color: var(--warn);
+}
+.budget-meter.over {
+    --budget-color: var(--danger);
+}
+.budget-bar {
+    height: 5px;
+    border-radius: 3px;
+    background: var(--line);
+    overflow: hidden;
+}
+.budget-bar span {
+    display: block;
+    height: 100%;
+    border-radius: 3px;
+    background: var(--budget-color);
+    transition: width 300ms ease-out;
+}
+.budget-text {
+    margin-top: 5px;
+    font-size: 11.5px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+.budget-meter.warn .budget-text,
+.budget-meter.over .budget-text {
+    color: var(--budget-color);
+    font-weight: 600;
+}
+.budget-badge {
+    flex: none;
+    font-size: 10.5px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: var(--warn);
+    background: color-mix(in srgb, var(--warn) 14%, transparent);
+}
+.budget-badge.over {
+    color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+.toast.warn {
+    background: var(--warn-strong);
+}
+:root {
+    --warn: #d97b06;
+    --warn-strong: #b9650a;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --warn: #f5a43a;
+        --warn-strong: #a35a08;
+    }
+}

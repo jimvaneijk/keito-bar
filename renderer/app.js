@@ -110,7 +110,7 @@ function toast(message, kind = 'info') {
     element.className = `toast ${kind}`;
     element.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => (element.hidden = true), kind === 'error' ? 6000 : 2500);
+    toastTimer = setTimeout(() => (element.hidden = true), kind === 'error' || kind === 'warn' ? 6000 : 2500);
 }
 
 async function run(promise, { quiet = false } = {}) {
@@ -308,7 +308,7 @@ function entryHtml(entry, today) {
     const span = entry.startedTime && entry.endedTime ? ` · ${entry.startedTime}–${entry.endedTime}` : '';
     return `<div class="entry ${entry.isRunning ? 'running' : ''} ${entry.locked ? 'locked' : ''}" data-entry="${escapeHtml(entry.id)}" role="listitem" title="${entry.locked ? escapeHtml(entry.lockedReason) : 'Klik om te bewerken'}">
     <div class="entry-main">
-      <div class="entry-project"><b>${escapeHtml(project)}</b>${client ? `<span class="entry-client">${escapeHtml(client)}</span>` : ''}</div>
+      <div class="entry-project"><b>${escapeHtml(project)}</b>${budgetBadgeHtml(entry.projectId)}${client ? `<span class="entry-client">${escapeHtml(client)}</span>` : ''}</div>
       <div class="entry-meta"><span class="task">${escapeHtml(task)}</span>${entry.notes ? ` · ${notesHtml(entry.notes)}` : ''}${span}</div>
     </div>
     <div class="entry-time" ${entry.isRunning ? `data-live="${escapeHtml(entry.id)}"` : ''}>${formatHours(liveHours(entry))}</div>
@@ -349,7 +349,10 @@ async function toggleTimer(id) {
     state.busy = true;
     try {
         if (entry.isRunning) await run(keitoBridge.stop(id));
-        else await run(keitoBridge.restart(id));
+        else {
+            await run(keitoBridge.restart(id));
+            warnAboutBudget(entry.projectId, entry.projectName);
+        }
         invalidateWeeks();
         await loadWeek({ silent: true });
     } catch {
@@ -379,6 +382,7 @@ async function openForm(entry, prefill = {}) {
         active: 0,
         confirmDelete: false,
     };
+    findElement('#project-budget').hidden = true;
     findElement('#view-form').hidden = false;
     findElement('#form-title').textContent = entry
         ? 'Bewerken'
@@ -566,6 +570,7 @@ function setTaskOptions(tasks, selectedId, disabled = false) {
 async function chooseProject(projectId, taskId = null, { focusNext = true } = {}) {
     if (!state.form) return;
     state.form.projectId = projectId;
+    renderProjectBudget(projectId);
     const project = state.projectsById.get(projectId);
     if (project) findElement('#f-project').value = projectLabel(project);
     closeCombo();
@@ -692,6 +697,7 @@ async function submitForm() {
                 }),
             );
             toast('Timer gestart');
+            warnAboutBudget(form.projectId);
             if (state.meetingContext) {
                 const taskName = taskSel.selectedOptions[0]?.textContent || null;
                 const project = state.projectsById.get(form.projectId);
@@ -994,8 +1000,24 @@ function syncMeetingSettings() {
     }
 }
 
+function syncBudgetSettings() {
+    const element = findElement('#budget-status');
+    if (!element) return;
+    const count = budgetCache.byProject.size;
+    if (!state.prefs.budgetEnabled) element.textContent = '';
+    else if (budgetCache.access === 'yes')
+        element.textContent = `Je ziet het budget van ${count} ${count === 1 ? 'project' : 'projecten'} (als beheerder of manager in Keito).`;
+    else if (count)
+        element.textContent = `Je ziet het budget van ${count} ${count === 1 ? 'project' : 'projecten'} waarvoor je inzage hebt.`;
+    else if (budgetCache.access === 'denied')
+        element.textContent =
+            'Keito geeft jouw account (nog) geen inzage in projectbudgetten. Een beheerder kan dat per project aanzetten; dan verschijnt het hier vanzelf.';
+    else element.textContent = '';
+}
+
 function syncPrefControls() {
     syncMeetingSettings();
+    syncBudgetSettings();
     renderSwatches();
     document
         .querySelectorAll('[data-pref="timeFormat"]')
@@ -1024,6 +1046,10 @@ async function setPref(patch) {
     Object.assign(state.prefs, patch);
     syncPrefControls();
     await run(keitoBridge.prefsSet(patch)).catch(() => {});
+    if ('budgetEnabled' in patch || 'budgetWarnPercent' in patch) {
+        await loadBudgets(true);
+        syncPrefControls();
+    }
 }
 
 // ---------------------------------------------------------------- boot / auth
@@ -1065,6 +1091,7 @@ function enterMain() {
     loadProjects()
         .then(render)
         .catch(() => {});
+    loadBudgets().then(render);
 }
 
 findElement('#setup-form').addEventListener('submit', async (event) => {
@@ -1619,6 +1646,7 @@ async function resolveNudge(id) {
                 }),
             );
             toast(`Timer gestart: ${nudge.suggest.projectName || 'project'}`);
+            warnAboutBudget(nudge.suggest.projectId, nudge.suggest.projectName);
             invalidateWeeks();
             await loadWeek({ silent: true });
         } catch {
@@ -1649,6 +1677,86 @@ document.addEventListener(
 );
 
 keitoBridge.on('nudge', (nudge) => showNudge(nudge));
+
+// ---------------------------------------------------------------- budgets
+//
+// Keito decides who sees budgets (see main.js). We only show what comes back.
+
+const budgetCache = { enabled: true, access: 'unknown', byProject: new Map() };
+
+async function loadBudgets(force = false) {
+    const result = await keitoBridge.budgets(force === true);
+    if (!result.ok) return;
+    budgetCache.enabled = result.data.enabled;
+    budgetCache.access = result.data.access;
+    budgetCache.byProject = new Map(Object.entries(result.data.budgets));
+}
+
+async function budgetFor(projectId) {
+    if (!projectId || !budgetCache.enabled) return null;
+    if (budgetCache.byProject.has(projectId)) return budgetCache.byProject.get(projectId);
+    if (budgetCache.access === 'yes') return null; // the report covers every budget you may see
+    const result = await keitoBridge.budget(projectId);
+    const budget = result.ok ? result.data : null;
+    if (budget) budgetCache.byProject.set(projectId, budget);
+    return budget;
+}
+
+function budgetLevel(budget) {
+    if (budget.percent >= 100) return 'over';
+    if (budget.percent >= (state.prefs.budgetWarnPercent || 80)) return 'warn';
+    return 'ok';
+}
+
+function formatBudgetAmount(value, budget) {
+    if (budget.unit === 'hours') return `${formatHours(Math.abs(value))} uur`;
+    return new Intl.NumberFormat('nl-NL', {
+        style: 'currency',
+        currency: budget.currency || 'EUR',
+        maximumFractionDigits: 0,
+    }).format(Math.abs(value));
+}
+
+function budgetSentence(budget) {
+    const percentage = Math.round(budget.percent);
+    const period = budget.isMonthly ? ' deze maand' : '';
+    if (budget.percent >= 100)
+        return `Over budget${period}: ${percentage}% · ${formatBudgetAmount(budget.spent - budget.budget, budget)} eroverheen`;
+    return `Budget${period}: ${percentage}% gebruikt · nog ${formatBudgetAmount(budget.remaining, budget)}`;
+}
+
+async function renderProjectBudget(projectId) {
+    const meter = findElement('#project-budget');
+    meter.hidden = true;
+    if (!projectId) return;
+    const budget = await budgetFor(projectId);
+    if (!budget || !state.form || state.form.projectId !== projectId) return;
+    meter.className = `budget-meter ${budgetLevel(budget)}`;
+    findElement('#project-budget-fill').style.width = `${Math.min(100, Math.max(0, budget.percent))}%`;
+    findElement('#project-budget-text').textContent = budgetSentence(budget);
+    meter.hidden = false;
+}
+
+async function warnAboutBudget(projectId, projectName) {
+    const budget = await budgetFor(projectId);
+    if (!budget || budgetLevel(budget) === 'ok') return;
+    const name = projectName || state.projectsById.get(projectId)?.name || 'Dit project';
+    const percentage = Math.round(budget.percent);
+    toast(
+        budget.percent >= 100
+            ? `Let op: ${name} zit over budget (${percentage}%)`
+            : `Let op: ${name} zit op ${percentage}% van het budget`,
+        'warn',
+    );
+}
+
+function budgetBadgeHtml(projectId) {
+    const budget = budgetCache.enabled ? budgetCache.byProject.get(projectId) : null;
+    if (!budget) return '';
+    const level = budgetLevel(budget);
+    if (level === 'ok') return '';
+    return `<span class="budget-badge ${level}" title="${escapeHtml(budgetSentence(budget))}">${Math.round(budget.percent)}%</span>`;
+}
 
 // ---------------------------------------------------------------- meetings
 
@@ -1767,6 +1875,9 @@ async function resolveMeetingAction(actionId) {
         stop: 'Meetingtimer gestopt',
     };
     if (messages[actionId]) toast(messages[actionId]);
+    if (actionId === 'track') warnAboutBudget(pending.defaults?.projectId, pending.defaults?.projectName);
+    if (actionId === 'stop-resume' && pending.previous)
+        warnAboutBudget(pending.previous.projectId, pending.previous.projectName);
     if (actionId === 'keep' || actionId === 'ignore') keitoBridge.hide();
     if (state.view !== 'main') show('main');
     state.selected = todayIsoDate();
@@ -1850,6 +1961,7 @@ keitoBridge.on('window:shown', () => {
         invalidateWeeks();
         loadWeek({ silent: true });
         loadProjects().catch(() => {});
+        loadBudgets().then(render);
     }
 });
 keitoBridge.on('data:changed', () => {
