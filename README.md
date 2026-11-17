@@ -282,8 +282,16 @@ npm version patch --no-git-tag-version   # 0.2.0 → 0.2.1
 npm run release                          # of release:universal als er nog Intel-Macs zijn
 ```
 
-`npm run release` controleert eerst certificaat, notarisatie, GitHub-login en repo-naam en
-zegt precies wat er ontbreekt.
+`npm run release` controleert eerst certificaat, notarisatie, GitHub-login, repo-naam en of de
+versie nieuw is, en zegt precies wat er ontbreekt. Daarna bouwt, signeert en notariseert het, maakt
+één concept-release, uploadt de bestanden één voor één (`latest-mac.yml` als laatste) en publiceert
+pas als alles er staat.
+
+Is een upload halverwege afgebroken? Vul de release aan zonder opnieuw te bouwen:
+
+```bash
+npm run release -- --upload-only
+```
 
 ### Structuur
 
