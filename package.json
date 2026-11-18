@@ -1,6 +1,6 @@
 {
     "name": "keito-bar",
-    "productName": "Better Keito Bar",
+    "productName": "Keito Bar",
     "version": "0.3.1",
     "description": "Menubar-app voor Keito tijdregistratie, met Harvest-achtige weeknavigatie.",
     "main": "main.js",
