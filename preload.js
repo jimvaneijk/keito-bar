@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('keito', {
     updateInstall: () => ipcRenderer.send('update:install'),
     setTodayTotal: (hours) => ipcRenderer.send('tray:today', hours),
     hide: () => ipcRenderer.send('window:hide'),
+    running: () => call('running:get'),
     setWindowMode: (mode) => call('window:mode', mode),
     windowMode: () => call('window:mode'),
     openWeb: (subPath) => ipcRenderer.send('open:web', subPath),

@@ -83,6 +83,7 @@ function prefs() {
             : 1,
         budgetEnabled: config.budgetEnabled !== false,
         detachedOnTop: config.detachedOnTop === true,
+        requireNoteOrTicket: config.requireNoteOrTicket !== false,
         budgetWarnPercent: BUDGET_WARN_CHOICES.includes(config.budgetWarnPercent) ? config.budgetWarnPercent : 80,
     };
 }
@@ -1107,6 +1108,7 @@ function registerIpc() {
             if (typeof patch.meetingEnabled === 'boolean') config.meetingEnabled = patch.meetingEnabled;
             if (typeof patch.budgetEnabled === 'boolean') config.budgetEnabled = patch.budgetEnabled;
             if (typeof patch.detachedOnTop === 'boolean') config.detachedOnTop = patch.detachedOnTop;
+            if (typeof patch.requireNoteOrTicket === 'boolean') config.requireNoteOrTicket = patch.requireNoteOrTicket;
             if (BUDGET_WARN_CHOICES.includes(Number(patch.budgetWarnPercent)))
                 config.budgetWarnPercent = Number(patch.budgetWarnPercent);
             if (MEETING_DELAY_CHOICES.includes(Number(patch.meetingDelayMinutes)))
@@ -1354,6 +1356,14 @@ function registerIpc() {
         updateTray();
     });
     ipcMain.on('window:hide', () => win?.hide());
+    // The running timer (also when it isn't in the week you're looking at).
+    ipcMain.handle(
+        'running:get',
+        wrap(async () => {
+            await refreshRunning();
+            return running?.entry || null;
+        }),
+    );
     ipcMain.handle(
         'window:mode',
         wrap(async (mode) => {

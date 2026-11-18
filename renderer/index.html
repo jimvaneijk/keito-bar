@@ -88,6 +88,26 @@
                     <button class="link-btn" data-act="update-install">Herstart nu</button>
                 </div>
 
+                <!-- Running timer, when its row is out of sight (scrolled away, other day or week) -->
+                <div id="running-bar" class="running-bar" hidden role="status">
+                    <button class="running-bar-main" data-act="goto-running" title="Naar de lopende timer">
+                        <span class="running-pulse" aria-hidden="true"></span>
+                        <span class="running-text">
+                            <b id="running-project"></b>
+                            <span id="running-meta"></span>
+                        </span>
+                        <span id="running-time" class="running-time"></span>
+                    </button>
+                    <button
+                        class="timer-btn stop"
+                        data-act="stop-running"
+                        title="Stop timer (S)"
+                        aria-label="Stop timer"
+                    >
+                        <svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1.2" /></svg>
+                    </button>
+                </div>
+
                 <footer class="footer">
                     <button class="primary-btn" data-act="new">
                         <svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" /></svg>
@@ -230,6 +250,10 @@
                         <label class="row">
                             <span>Totaal van vandaag in de menubalk</span>
                             <input type="checkbox" class="switch" data-pref="trayShowsToday" />
+                        </label>
+                        <label class="row">
+                            <span>Notitie of Jira-ticket verplicht</span>
+                            <input type="checkbox" class="switch" data-pref="requireNoteOrTicket" />
                         </label>
                         <label class="row">
                             <span>Losgemaakt venster altijd bovenop</span>

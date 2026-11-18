@@ -275,7 +275,17 @@ function render() {
     </div>`;
     } else {
         entriesList.innerHTML = dayList.map((entry) => entryHtml(entry, today)).join('');
+        if (state.scrollToEntry) {
+            const row = entriesList.querySelector(`[data-entry="${CSS.escape(state.scrollToEntry)}"]`);
+            if (row) {
+                row.scrollIntoView({ block: 'nearest' });
+                row.classList.add('flash');
+            }
+            state.scrollToEntry = null;
+        }
     }
+    updateRunningBar();
+    refreshRunningElsewhere();
 
     findElement('#new-label').textContent =
         state.selected === today
@@ -326,8 +336,10 @@ function notesHtml(notes) {
 // Live ticking of running timers without full re-render.
 setInterval(() => {
     if (state.view !== 'main') return;
-    const runningEntry = state.entries.find((entry) => entry.isRunning);
+    const runningEntry = currentRunningEntry();
     if (!runningEntry) return;
+    if (!findElement('#running-bar').hidden)
+        findElement('#running-time').textContent = formatHours(liveHours(runningEntry));
     document.querySelectorAll('[data-live]').forEach((element) => {
         const entry = state.entries.find((candidate) => candidate.id === element.dataset.live);
         if (entry) element.textContent = formatHours(liveHours(entry));
@@ -339,6 +351,65 @@ setInterval(() => {
         findElement('#day-total').textContent = formatHours(sum(entriesOn(state.selected)));
     findElement('#week-total').textContent = `week ${formatHours(sum(state.entries))}`;
 }, 1000);
+
+// ---------------------------------------------------------------- running timer in sight
+//
+// Like Harvest's running-timer indicator: when the running timer's row is out of sight
+// (scrolled away, another day or another week), a bar above "Nieuwe registratie" shows it.
+
+const runningInfo = { entry: null, fetchedAt: 0 }; // running timer outside the loaded week
+
+function currentRunningEntry() {
+    return state.entries.find((entry) => entry.isRunning) || runningInfo.entry;
+}
+
+async function refreshRunningElsewhere() {
+    if (state.loadingWeek || state.entries.some((entry) => entry.isRunning)) {
+        runningInfo.entry = null;
+        return;
+    }
+    if (Date.now() - runningInfo.fetchedAt < 60_000) return;
+    runningInfo.fetchedAt = Date.now();
+    const result = await keitoBridge.running();
+    runningInfo.entry = result.ok ? result.data : null;
+    updateRunningBar();
+}
+
+function runningRowVisible(entry) {
+    const row = document.querySelector(`#entries [data-entry="${CSS.escape(entry.id)}"]`);
+    if (!row) return false;
+    const list = findElement('#entries').getBoundingClientRect();
+    const box = row.getBoundingClientRect();
+    return box.top >= list.top - 1 && box.bottom <= list.bottom + 1;
+}
+
+function updateRunningBar() {
+    const bar = findElement('#running-bar');
+    const entry = state.view === 'main' && !state.loadingWeek ? currentRunningEntry() : null;
+    if (!entry || runningRowVisible(entry)) {
+        bar.hidden = true;
+        return;
+    }
+    const project = state.projectsById.get(entry.projectId);
+    findElement('#running-project').textContent = entry.projectName || project?.name || 'Lopende timer';
+    const otherDay =
+        entry.spentDate !== state.selected
+            ? entry.spentDate === todayIsoDate()
+                ? 'vandaag'
+                : capitalize(dayFormatter.format(parseIsoDate(entry.spentDate)))
+            : null;
+    findElement('#running-meta').textContent = [otherDay, entry.taskName, entry.notes].filter(Boolean).join(' · ');
+    findElement('#running-time').textContent = formatHours(liveHours(entry));
+    bar.hidden = false;
+}
+
+findElement('#entries').addEventListener('scroll', updateRunningBar, { passive: true });
+window.addEventListener('resize', updateRunningBar);
+
+/** Note or Jira ticket required: Keito's company setting, or the "verplicht" setting in Keito Bar. */
+function notesRequired() {
+    return state.me?.requireNotes === true || state.prefs.requireNoteOrTicket !== false;
+}
 
 // ---------------------------------------------------------------- timer actions
 
@@ -363,8 +434,20 @@ async function toggleTimer(id) {
 }
 
 function stopRunning() {
-    const runningEntry = state.entries.find((entry) => entry.isRunning);
-    if (runningEntry) toggleTimer(runningEntry.id);
+    const runningEntry = currentRunningEntry();
+    if (!runningEntry) return;
+    if (state.entries.some((entry) => entry.id === runningEntry.id)) {
+        toggleTimer(runningEntry.id);
+        return;
+    }
+    // Running on a day outside the week you're looking at.
+    run(keitoBridge.stop(runningEntry.id))
+        .then(() => {
+            runningInfo.entry = null;
+            invalidateWeeks();
+            return loadWeek({ silent: true });
+        })
+        .catch(() => {});
 }
 
 // ---------------------------------------------------------------- form
@@ -400,7 +483,8 @@ async function openForm(entry, prefill = {}) {
     findElement('#f-duration').disabled = !!entry?.isRunning;
     if (prefill.hours) findElement('#f-duration').value = formatHours(prefill.hours);
     if (prefill.notes) findElement('#f-notes').value = prefill.notes;
-    findElement('#notes-required').hidden = !state.me?.requireNotes;
+    findElement('#notes-required').hidden = !notesRequired();
+    findElement('#notes-required').textContent = state.jira.configured ? 'of Jira-ticket verplicht' : 'verplicht';
     findElement('#btn-delete').hidden = !entry;
     findElement('#btn-delete').classList.remove('confirm');
     findElement('#btn-delete').textContent = 'Verwijderen';
@@ -423,6 +507,10 @@ async function openForm(entry, prefill = {}) {
     if (entry) {
         if (entry.projectId) await chooseProject(entry.projectId, entry.taskId, { focusNext: false });
         findElement('#f-notes').focus();
+    } else if (prefill.projectId) {
+        await chooseProject(prefill.projectId, prefill.taskId, { focusNext: false });
+        if (state.jira.configured) focusJira();
+        else findElement('#f-notes').focus();
     } else {
         findElement('#f-project').focus();
         openCombo();
@@ -640,8 +728,8 @@ async function submitForm() {
         toast('Kies een taak.', 'error');
         return;
     }
-    if (state.me?.requireNotes && !notes && !form.jira) {
-        toast('Notities zijn verplicht in jullie Keito.', 'error');
+    if (notesRequired() && !notes && !form.jira) {
+        toast(state.jira.configured ? 'Vul een notitie in of kies een Jira-ticket.' : 'Vul een notitie in.', 'error');
         findElement('#f-notes').focus();
         return;
     }
@@ -1175,6 +1263,16 @@ document.addEventListener('click', (event) => {
 
     const action = target.closest('[data-act]')?.dataset.act;
     switch (action) {
+        case 'goto-running': {
+            const runningEntry = currentRunningEntry();
+            if (!runningEntry) break;
+            state.scrollToEntry = runningEntry.id;
+            selectDay(runningEntry.spentDate);
+            break;
+        }
+        case 'stop-running':
+            stopRunning();
+            break;
         case 'toggle-detach':
             keitoBridge.setWindowMode(state.windowMode === 'detached' ? 'attached' : 'detached');
             break;
@@ -1574,7 +1672,7 @@ function showNudge(nudge) {
             const label = [nudge.suggest.projectName || project?.name, nudge.suggest.taskName]
                 .filter(Boolean)
                 .join(' · ');
-            actions.push({ id: 'suggest', label: `Start ${label}`, primary: true });
+            actions.push({ id: 'suggest', label: `Start ${label}${notesRequired() ? '…' : ''}`, primary: true });
         }
         actions.push({ id: 'new', label: 'Andere timer starten…', primary: !actions.length });
         actions.push({ id: 'snooze', label: 'Herinner me over 15 min' });
@@ -1640,7 +1738,13 @@ async function resolveNudge(id) {
     invalidateWeeks();
     await loadWeek({ silent: true });
 
-    if (id === 'suggest' && nudge.suggest) {
+    if (id === 'suggest' && nudge.suggest && notesRequired()) {
+        // A note or Jira ticket is required: open the form with project and task filled in.
+        await openForm(null, { projectId: nudge.suggest.projectId, taskId: nudge.suggest.taskId });
+        findElement('#duration-hint').textContent = state.jira.configured
+            ? 'Kies een Jira-ticket of vul een notitie in, en druk op ⌘↵ om de timer te starten.'
+            : 'Vul een notitie in en druk op ⌘↵ om de timer te starten.';
+    } else if (id === 'suggest' && nudge.suggest) {
         state.busy = true;
         try {
             await run(

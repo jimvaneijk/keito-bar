@@ -56,6 +56,8 @@ In **Instellingen** kun je nog:
 
 - **Openen bij inloggen** aanzetten, zodat Keito Bar altijd klaarstaat
 - je **accentkleur** kiezen
+- **Notitie of Jira-ticket verplicht** aan- of uitzetten (standaard aan; staat het in Keito zelf
+  verplicht, dan geldt het altijd)
 - je **werkdagen** en **herinneringstijden** instellen (zie [Herinneringen](#herinneringen))
 
 ---
@@ -80,6 +82,9 @@ Klik op het klokje in de menubalk, of druk overal op **⌘⇧K**.
 </table>
 
 - **Timer starten/stoppen**: de knop naast een registratie. Een nieuwe timer stopt de vorige.
+- **Lopende timer altijd in zicht**: staat je lopende timer buiten beeld (weggescrold, andere dag
+  of week), dan verschijnt hij als groene balk boven *Nieuwe registratie*, met tijd en stopknop.
+  Klik erop om ernaartoe te gaan.
 - **Andere dag**: klik een dag in de weekstrip, of <kbd>←</kbd> <kbd>→</kbd>. Op andere dagen voeg je uren toe met een duur.
 - **Bewerken of verwijderen**: klik op een registratie. Goedgekeurde uren (🔒) zijn alleen-lezen.
 - **Taak**: de app onthoudt per project welke taak je het laatst gebruikte.
@@ -167,7 +172,7 @@ het vanzelf. De grens (70, 80 of 90%) en aan/uit staan in **Instellingen → Bud
     <td width="33%"><img src="docs/screenshots/instellingen-herinneringen.png" alt="Instellingen voor herinneringen"></td>
   </tr>
   <tr>
-    <td><b>Timer nog niet gestart</b>: vanaf 09:15 zonder lopende timer. Start met één klik je laatste project.</td>
+    <td><b>Timer nog niet gestart</b>: vanaf 09:15 zonder lopende timer. Start je laatste project; is een notitie of Jira-ticket verplicht, dan staat het formulier klaar met project en taak al ingevuld.</td>
     <td><b>Uren-check</b>: om 16:45 onder de 6 uur? Dan kun je direct aanvullen; wat ontbreekt staat al ingevuld.</td>
     <td>Tijden, minimum en werkdagen stel je zelf in. Met <b>Probeer</b> zie je de melding direct.</td>
   </tr>
