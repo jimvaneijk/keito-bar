@@ -251,9 +251,9 @@ let todayTotal = null; // hours of today's stopped entries, pushed by the render
 
 function icon(isRunning) {
     const image = nativeImage.createFromPath(
-        path.join(__dirname, 'assets', isRunning ? 'trayRunningTemplate.png' : 'trayTemplate.png'),
+        path.join(__dirname, 'assets', isRunning ? 'trayRunning.png' : 'trayTemplate.png'),
     );
-    image.setTemplateImage(true);
+    image.setTemplateImage(!isRunning);
     return image;
 }
 
