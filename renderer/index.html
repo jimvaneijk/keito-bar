@@ -290,8 +290,20 @@
                         </label>
                         <div class="row">
                             <span>Sneltoets</span>
-                            <kbd id="s-shortcut"></kbd>
+                            <span class="row-end">
+                                <button
+                                    type="button"
+                                    id="s-shortcut"
+                                    class="shortcut-btn"
+                                    data-act="record-shortcut"
+                                    title="Klik en druk de combinatie die je wilt"
+                                ></button>
+                                <button type="button" class="link-btn" id="s-shortcut-reset" data-act="reset-shortcut">
+                                    Standaard
+                                </button>
+                            </span>
                         </div>
+                        <p id="s-shortcut-hint" class="muted small shortcut-hint" hidden></p>
                     </div>
 
                     <div class="card meetings">
