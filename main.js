@@ -38,6 +38,7 @@ const SNOOZE_MS = 15 * 60e3;
 
 let tray = null;
 let win = null;
+let quitting = false; // set on before-quit: only then may the window actually close
 let api = null;
 let me = null;
 let running = null; // { entry, fetchedAt }
@@ -919,6 +920,13 @@ function createWindow() {
         return { action: 'deny' };
     });
     win.webContents.on('will-navigate', (event) => event.preventDefault());
+    // ⌘W (default menu) and the window buttons would destroy the window while the tray lives on;
+    // every later tray click then threw "Object has been destroyed". Hide instead, close only on quit.
+    win.on('close', (event) => {
+        if (quitting) return;
+        event.preventDefault();
+        win.hide();
+    });
 }
 
 function positionWindow() {
@@ -1427,6 +1435,10 @@ if (!app.requestSingleInstanceLock()) {
 
     // Clicking the Dock icon (detached mode) brings the window back.
     app.on('activate', () => showWindow());
+
+    app.on('before-quit', () => {
+        quitting = true;
+    });
 
     app.on('will-quit', () => {
         globalShortcut.unregisterAll();
