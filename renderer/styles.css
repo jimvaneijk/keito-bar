@@ -558,7 +558,8 @@ select {
     background-size: 5px 5px;
     background-repeat: no-repeat;
 }
-select:disabled {
+select:disabled,
+input:disabled {
     color: var(--faint);
 }
 textarea {
