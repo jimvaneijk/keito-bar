@@ -461,8 +461,7 @@ async function openForm(entry, prefill = {}) {
         isRunning: !!entry?.isRunning,
         projectId: entry?.projectId || null,
         taskId: entry?.taskId || null,
-        query: '',
-        active: 0,
+        tasks: [],
         confirmDelete: false,
     };
     findElement('#project-budget').hidden = true;
@@ -488,9 +487,9 @@ async function openForm(entry, prefill = {}) {
     findElement('#btn-delete').hidden = !entry;
     findElement('#btn-delete').classList.remove('confirm');
     findElement('#btn-delete').textContent = 'Verwijderen';
-    setTaskOptions([], null, true);
+    setTaskOptions([], null, 'Kies eerst een project');
     updateSubmitLabel();
-    closeCombo();
+    closeCombos();
     closeJira();
     findElement('#jira-field').hidden = !state.jira.configured;
     findElement('#f-jira').value = '';
@@ -513,11 +512,11 @@ async function openForm(entry, prefill = {}) {
         else findElement('#f-notes').focus();
     } else {
         findElement('#f-project').focus();
-        openCombo();
+        projectCombo.open();
     }
     loadProjects()
         .then(() => {
-            if (!findElement('#combo-list').hidden) renderCombo();
+            if (projectCombo.isOpen()) projectCombo.render();
         })
         .catch(() => {});
 }
@@ -529,7 +528,7 @@ function closeForm() {
     }
     state.form = null;
     findElement('#view-form').hidden = true;
-    closeCombo();
+    closeCombos();
     closeJira();
 }
 
@@ -638,21 +637,19 @@ function projectLabel(project) {
     return project.clientName ? `${project.name} — ${project.clientName}` : project.name;
 }
 
-function setTaskOptions(tasks, selectedId, disabled = false) {
-    const taskSelect = findElement('#f-task');
-    if (disabled || !tasks.length) {
-        taskSelect.innerHTML = `<option>${disabled ? 'Kies eerst een project' : 'Geen taken in dit project'}</option>`;
-        taskSelect.disabled = true;
-        return;
-    }
-    taskSelect.innerHTML = tasks
-        .map(
-            (task) =>
-                `<option value="${escapeHtml(task.id)}" ${task.id === selectedId ? 'selected' : ''}>${escapeHtml(task.name)}</option>`,
-        )
-        .join('');
-    taskSelect.disabled = false;
-    if (!tasks.some((task) => task.id === selectedId)) taskSelect.value = tasks[0].id;
+/** Fill the task picker; `message` replaces the list when there is nothing to pick yet. */
+function setTaskOptions(tasks, selectedId, message = 'Geen taken in dit project') {
+    const form = state.form;
+    if (!form) return;
+    form.tasks = tasks;
+    form.tasksMessage = tasks.length ? null : message;
+    const selected = tasks.find((task) => task.id === selectedId) || tasks[0] || null;
+    form.taskId = selected?.id || null;
+    const taskInput = findElement('#f-task');
+    taskInput.value = selected ? selected.name : '';
+    taskInput.placeholder = form.tasksMessage || 'Zoek een taak…';
+    taskInput.disabled = !tasks.length;
+    if (taskCombo.isOpen()) taskCombo.render();
 }
 
 async function chooseProject(projectId, taskId = null, { focusNext = true } = {}) {
@@ -661,10 +658,8 @@ async function chooseProject(projectId, taskId = null, { focusNext = true } = {}
     renderProjectBudget(projectId);
     const project = state.projectsById.get(projectId);
     if (project) findElement('#f-project').value = projectLabel(project);
-    closeCombo();
-    const taskSelect = findElement('#f-task');
-    taskSelect.innerHTML = '<option>Taken laden…</option>';
-    taskSelect.disabled = true;
+    closeCombos();
+    setTaskOptions([], null, 'Taken laden…');
     try {
         const tasks = await loadTasks(projectId);
         if (!state.form || state.form.projectId !== projectId) return;
@@ -713,7 +708,6 @@ function updateSubmitLabel() {
 async function submitForm() {
     const form = state.form;
     if (!form || state.busy) return;
-    const taskSel = findElement('#f-task');
     const notes = findElement('#f-notes').value.trim();
     const durRaw = findElement('#f-duration').value.trim();
     const hours = parseDuration(durRaw);
@@ -721,11 +715,12 @@ async function submitForm() {
     if (!form.projectId) {
         toast('Kies een project.', 'error');
         findElement('#f-project').focus();
-        openCombo();
+        projectCombo.open();
         return;
     }
-    if (taskSel.disabled || !taskSel.value) {
+    if (!form.taskId) {
         toast('Kies een taak.', 'error');
+        findElement('#f-task').focus();
         return;
     }
     if (notesRequired() && !notes && !form.jira) {
@@ -758,8 +753,8 @@ async function submitForm() {
             };
         }
     }
-    const base = { project_id: form.projectId, task_id: taskSel.value, notes: finalNotes };
-    safeSet(`lastTask:${form.projectId}`, taskSel.value);
+    const base = { project_id: form.projectId, task_id: form.taskId, notes: finalNotes };
+    safeSet(`lastTask:${form.projectId}`, form.taskId);
 
     state.busy = true;
     findElement('#btn-submit').disabled = true;
@@ -854,18 +849,7 @@ async function deleteEntry() {
     }
 }
 
-// ---------------------------------------------------------------- project combobox
-
-function filteredProjects() {
-    const query = findElement('#f-project').value.trim().toLowerCase();
-    const current = state.form?.projectId && projectLabel(state.projectsById.get(state.form.projectId)).toLowerCase();
-    if (!query || query === current) return state.projects;
-    const terms = query.split(/\s+/);
-    return state.projects.filter((project) => {
-        const haystack = `${project.name} ${project.clientName || ''} ${project.code || ''}`.toLowerCase();
-        return terms.every((term) => haystack.includes(term));
-    });
-}
+// ---------------------------------------------------------------- comboboxes
 
 function highlight(text, query) {
     const escaped = escapeHtml(text);
@@ -880,51 +864,185 @@ function highlight(text, query) {
     return escaped.replace(new RegExp(`(${terms.map(escapeHtml).join('|')})`, 'gi'), '<mark>$1</mark>');
 }
 
-function renderCombo() {
-    const list = findElement('#combo-list');
-    const items = filteredProjects();
-    if (!state.form) return;
-    state.form.items = items;
-    if (state.form.active >= items.length) state.form.active = Math.max(0, items.length - 1);
-    if (!state.projects.length) {
-        list.innerHTML = '<div class="combo-empty">Projecten laden…</div>';
-        return;
-    }
-    if (!items.length) {
-        list.innerHTML = '<div class="combo-empty">Geen project gevonden.</div>';
-        return;
-    }
-    const query =
-        state.form.projectId &&
-        findElement('#f-project').value === projectLabel(state.projectsById.get(state.form.projectId))
-            ? ''
-            : findElement('#f-project').value;
-    let html = '';
-    let lastClient = null;
-    items.forEach((project, index) => {
-        const client = project.clientName || 'Zonder klant';
-        if (client !== lastClient) {
-            html += `<div class="combo-group">${highlight(client, query)}</div>`;
-            lastClient = client;
+const comboboxes = [];
+
+/**
+ * Searchable picker: type to filter, arrows to walk the list, Enter or click to pick,
+ * Escape to close. Shared by the project field and the task field.
+ */
+function createCombobox(config) {
+    const input = findElement(config.inputSelector);
+    const list = findElement(config.listSelector);
+    const itemText = config.itemText || config.label;
+    const combo = { items: [], active: 0 };
+
+    // What the user typed: the value of a picked item counts as "nothing typed", so the full list stays.
+    const typedQuery = () => {
+        const value = input.value.trim();
+        const selected = config.selected();
+        return selected && value === config.label(selected) ? '' : value;
+    };
+
+    const filtered = () => {
+        const terms = typedQuery().toLowerCase().split(/\s+/).filter(Boolean);
+        if (!terms.length) return config.source();
+        return config.source().filter((item) => {
+            const haystack = config.haystack(item).toLowerCase();
+            return terms.every((term) => haystack.includes(term));
+        });
+    };
+
+    combo.isOpen = () => !list.hidden;
+
+    combo.render = () => {
+        const message = config.placeholder?.();
+        combo.items = message ? [] : filtered();
+        if (combo.active >= combo.items.length) combo.active = Math.max(0, combo.items.length - 1);
+        if (message) {
+            list.innerHTML = `<div class="combo-empty">${escapeHtml(message)}</div>`;
+            return;
         }
-        html += `<div class="combo-item ${index === state.form.active ? 'active' : ''}" role="option" data-idx="${index}">
-      <span>${highlight(project.name, query)}</span>${project.code ? `<span class="code">${highlight(project.code, query)}</span>` : ''}</div>`;
+        if (!combo.items.length) {
+            list.innerHTML = `<div class="combo-empty">${escapeHtml(config.emptyText)}</div>`;
+            return;
+        }
+        const query = typedQuery();
+        let html = '';
+        let lastGroup = null;
+        combo.items.forEach((item, index) => {
+            const group = config.group?.(item);
+            if (group && group !== lastGroup) {
+                html += `<div class="combo-group">${highlight(group, query)}</div>`;
+                lastGroup = group;
+            }
+            const code = config.code?.(item);
+            html += `<div class="combo-item ${index === combo.active ? 'active' : ''}" role="option" data-idx="${index}">
+      <span>${highlight(itemText(item), query)}</span>${code ? `<span class="code">${highlight(code, query)}</span>` : ''}</div>`;
+        });
+        list.innerHTML = html;
+        list.querySelector('.combo-item.active')?.scrollIntoView({ block: 'nearest' });
+    };
+
+    const show = () => {
+        list.hidden = false;
+        input.setAttribute('aria-expanded', 'true');
+    };
+
+    combo.open = () => {
+        if (!state.form) return;
+        show();
+        const selected = config.selected();
+        combo.active = selected ? Math.max(0, filtered().indexOf(selected)) : 0;
+        combo.render();
+    };
+
+    combo.close = () => {
+        list.hidden = true;
+        input.setAttribute('aria-expanded', 'false');
+    };
+
+    // Escape closes the list, except on an untouched empty field — there it closes the whole form.
+    combo.dismissable = () => combo.isOpen() && (!!config.selected() || !!input.value.trim());
+
+    combo.setValue = (item) => {
+        input.value = item ? config.label(item) : '';
+    };
+
+    const pick = (index) => {
+        const item = combo.items[index];
+        if (!item) return;
+        combo.setValue(item);
+        combo.close();
+        config.onPick(item);
+    };
+
+    input.addEventListener('focus', () => {
+        closeJira();
+        comboboxes.forEach((other) => other !== combo && other.close());
+        input.select();
+        combo.open();
     });
-    list.innerHTML = html;
-    list.querySelector('.combo-item.active')?.scrollIntoView({ block: 'nearest' });
+    input.addEventListener('input', () => {
+        if (!state.form) return;
+        combo.active = 0;
+        show();
+        combo.render();
+    });
+    input.addEventListener('keydown', (event) => {
+        if (!state.form) return;
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            if (!combo.isOpen()) {
+                combo.open();
+                return;
+            }
+            const count = combo.items.length;
+            if (!count) return;
+            combo.active = (combo.active + (event.key === 'ArrowDown' ? 1 : -1) + count) % count;
+            combo.render();
+        } else if (event.key === 'Enter' && combo.isOpen() && !event.metaKey && !event.ctrlKey) {
+            event.preventDefault();
+            pick(combo.active);
+        } else if (event.key === 'Tab' && combo.isOpen()) {
+            const item = combo.items[combo.active];
+            if (item && input.value.trim() && item !== config.selected()) {
+                event.preventDefault();
+                pick(combo.active);
+            } else combo.close();
+        }
+    });
+    input.addEventListener('blur', () => {
+        // Typing without picking leaves the field showing what is actually selected.
+        const selected = config.selected();
+        if (selected) combo.setValue(selected);
+    });
+    list.addEventListener('mousedown', (event) => event.preventDefault()); // keep focus in the input
+    list.addEventListener('mousemove', (event) => {
+        const item = event.target.closest('.combo-item');
+        if (!item || combo.active === +item.dataset.idx) return;
+        combo.active = +item.dataset.idx;
+        list.querySelectorAll('.combo-item').forEach((element) => element.classList.toggle('active', element === item));
+    });
+    list.addEventListener('click', (event) => {
+        const item = event.target.closest('.combo-item');
+        if (item) pick(+item.dataset.idx);
+    });
+
+    comboboxes.push(combo);
+    return combo;
 }
 
-function openCombo() {
-    if (!state.form) return;
-    findElement('#combo-list').hidden = false;
-    findElement('#f-project').setAttribute('aria-expanded', 'true');
-    const index = state.form.projectId ? state.projects.findIndex((project) => project.id === state.form.projectId) : 0;
-    state.form.active = Math.max(0, index);
-    renderCombo();
-}
-function closeCombo() {
-    findElement('#combo-list').hidden = true;
-    findElement('#f-project').setAttribute('aria-expanded', 'false');
+const projectCombo = createCombobox({
+    inputSelector: '#f-project',
+    listSelector: '#combo-list',
+    source: () => state.projects,
+    selected: () => state.projectsById.get(state.form?.projectId) || null,
+    placeholder: () => (state.projects.length ? null : 'Projecten laden…'),
+    label: (project) => projectLabel(project),
+    itemText: (project) => project.name,
+    code: (project) => project.code,
+    group: (project) => project.clientName || 'Zonder klant',
+    haystack: (project) => `${project.name} ${project.clientName || ''} ${project.code || ''}`,
+    emptyText: 'Geen project gevonden.',
+    onPick: (project) => chooseProject(project.id),
+});
+
+const taskCombo = createCombobox({
+    inputSelector: '#f-task',
+    listSelector: '#task-list',
+    source: () => state.form?.tasks || [],
+    selected: () => (state.form?.tasks || []).find((task) => task.id === state.form.taskId) || null,
+    placeholder: () => state.form?.tasksMessage || null,
+    label: (task) => task.name,
+    haystack: (task) => task.name,
+    emptyText: 'Geen taak gevonden.',
+    onPick: (task) => {
+        state.form.taskId = task.id;
+    },
+});
+
+function closeCombos() {
+    comboboxes.forEach((combo) => combo.close());
 }
 
 // ---------------------------------------------------------------- settings
@@ -1229,11 +1347,6 @@ document.addEventListener('click', (event) => {
         selectDay(day.dataset.day);
         return;
     }
-    const item = target.closest('.combo-item');
-    if (item && state.form) {
-        chooseProject(state.form.items[+item.dataset.idx].id);
-        return;
-    }
     const entry = target.closest('[data-entry]');
     if (entry && state.view === 'main') {
         const clickedEntry = state.entries.find((candidate) => candidate.id === entry.dataset.entry);
@@ -1259,7 +1372,7 @@ document.addEventListener('click', (event) => {
         setPref({ [pref.dataset.pref]: pref.dataset.val });
         return;
     }
-    if (!target.closest('.combo')) closeCombo();
+    if (!target.closest('.combo')) closeCombos();
 
     const action = target.closest('[data-act]')?.dataset.act;
     switch (action) {
@@ -1382,55 +1495,8 @@ findElement('#f-duration').addEventListener('blur', () => {
     if (hours !== null && !Number.isNaN(hours)) findElement('#f-duration').value = formatHours(hours);
     updateSubmitLabel();
 });
-findElement('#f-project').addEventListener('focus', () => {
-    closeJira();
-    findElement('#f-project').select();
-    openCombo();
-});
-findElement('#f-project').addEventListener('input', () => {
-    if (state.form) state.form.active = 0;
-    openCombo();
-    renderCombo();
-});
-findElement('#f-project').addEventListener('keydown', (event) => {
-    const form = state.form;
-    if (!form) return;
-    const open = !findElement('#combo-list').hidden;
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        event.preventDefault();
-        if (!open) {
-            openCombo();
-            return;
-        }
-        const count = (form.items || []).length;
-        if (!count) return;
-        form.active = (form.active + (event.key === 'ArrowDown' ? 1 : -1) + count) % count;
-        renderCombo();
-    } else if (event.key === 'Enter' && open && !event.metaKey && !event.ctrlKey) {
-        event.preventDefault();
-        const project = form.items?.[form.active];
-        if (project) chooseProject(project.id);
-    } else if (event.key === 'Tab' && open) {
-        const project = form.items?.[form.active];
-        if (project && findElement('#f-project').value.trim() && project.id !== form.projectId) {
-            event.preventDefault();
-            chooseProject(project.id);
-        } else closeCombo();
-    }
-});
-findElement('#combo-list').addEventListener('mousedown', (event) => event.preventDefault()); // keep focus in input
-findElement('#combo-list').addEventListener('mousemove', (event) => {
-    const item = event.target.closest('.combo-item');
-    if (item && state.form && state.form.active !== +item.dataset.idx) {
-        state.form.active = +item.dataset.idx;
-        document
-            .querySelectorAll('.combo-item')
-            .forEach((element) => element.classList.toggle('active', element === item));
-    }
-});
-
 findElement('#f-jira').addEventListener('focus', () => {
-    closeCombo();
+    closeCombos();
     searchJira();
 });
 findElement('#f-jira').addEventListener('input', () => {
@@ -1513,8 +1579,9 @@ document.addEventListener('keydown', (event) => {
             closeJira();
             return;
         }
-        if (state.form && !findElement('#combo-list').hidden && state.form.projectId) {
-            closeCombo();
+        const openCombobox = state.form && comboboxes.find((combo) => combo.dismissable());
+        if (openCombobox) {
+            openCombobox.close();
             return;
         }
         if (state.form) {
@@ -1584,7 +1651,7 @@ const formatClock = (timestamp) => {
 function showIdle(pending) {
     if (!pending || !state.me) return;
     state.idle = pending;
-    closeCombo();
+    closeCombos();
     closeJira();
     findElement('#idle-dur').textContent = formatAwayDuration(pending.hours);
     document
@@ -1706,7 +1773,7 @@ function showNudge(nudge) {
                 `<button class="${nudgeAction.primary ? 'primary-btn' : 'ghost-btn'}" data-nudge="${nudgeAction.id}"><span class="label">${escapeHtml(nudgeAction.label)}</span> <kbd>${index + 1}</kbd></button>`,
         )
         .join('');
-    closeCombo();
+    closeCombos();
     closeJira();
     findElement('#view-nudge').hidden = false;
 }
@@ -1938,7 +2005,7 @@ function showMeeting(pending) {
                 `<button class="${meetingAction.primary ? 'primary-btn' : 'ghost-btn'}" data-meeting="${index}"><span class="label">${escapeHtml(meetingAction.label)}</span> <kbd>${index + 1}</kbd></button>`,
         )
         .join('');
-    closeCombo();
+    closeCombos();
     closeJira();
     findElement('#view-meeting').hidden = false;
 }

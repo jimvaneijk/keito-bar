@@ -149,9 +149,19 @@
 
                     <label class="field">
                         <span class="field-label">Taak</span>
-                        <select id="f-task" disabled>
-                            <option>Kies eerst een project</option>
-                        </select>
+                        <div class="combo" id="task-combo">
+                            <input
+                                id="f-task"
+                                type="text"
+                                placeholder="Kies eerst een project"
+                                spellcheck="false"
+                                role="combobox"
+                                aria-expanded="false"
+                                aria-controls="task-list"
+                                disabled
+                            />
+                            <div id="task-list" class="combo-list" role="listbox" hidden></div>
+                        </div>
                     </label>
 
                     <div class="field" id="jira-field" hidden>
