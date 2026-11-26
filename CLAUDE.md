@@ -63,6 +63,27 @@ Na een `git pull` met nieuwe dependencies: `npm install` (Prettier staat alleen 
   (`Object.defineProperty(window, 'keito', { configurable: false, writable: false, … })`),
   anders mis je botsingen als hierboven.
 
+## Git
+
+Branchnamen volgen de 23G-conventie (`GIT-WORKFLOW.md` in de SOLAN-repo, intern):
+
+```text
+feature/<naam>     nieuwe functionaliteit
+bugfix/<naam>      niet-kritieke fout
+hotfix/<naam>      kritieke fout in een uitgebrachte versie, vanaf de laatste tag
+```
+
+De conventie kent daarnaast een vorm met een Jira-ticket als branchnaam; deze repo staat niet in
+Jira, dus die vervalt hier. Werk aan de repo zelf (conventies, documentatie) gaat onder `feature/`.
+
+`main` is leidend en alles gaat via een PR met squash merge. Een ruleset blokkeert verwijderen en
+force-push en eist review van de code owner.
+
+**Wat hier anders is:** in de projecten waar deze conventie vandaan komt deployt een `v*`-tag via
+CI naar productie. Hier draait geen CI — `npm run release` bouwt, ondertekent en publiceert lokaal,
+en de tag is het resultaat van een release in plaats van de aanleiding. De ruleset `Releasetags`
+laat alleen een admin een `v*`-tag aanmaken.
+
 ## Release
 
 `npm run release` (`build/release.js`):
