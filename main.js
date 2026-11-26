@@ -249,11 +249,14 @@ function liveHours(runningState) {
 
 let todayTotal = null; // hours of today's stopped entries, pushed by the renderer
 
+// Idle is a template image, so macOS tints it like every other menu bar icon. A running
+// timer keeps its own green instead: that is the one state you want to spot without looking.
+// The trade-off is that it no longer inverts while the menu bar item is highlighted.
 function icon(isRunning) {
     const image = nativeImage.createFromPath(
-        path.join(__dirname, 'assets', isRunning ? 'trayRunningTemplate.png' : 'trayTemplate.png'),
+        path.join(__dirname, 'assets', isRunning ? 'trayRunning.png' : 'trayTemplate.png'),
     );
-    image.setTemplateImage(true);
+    image.setTemplateImage(!isRunning);
     return image;
 }
 
