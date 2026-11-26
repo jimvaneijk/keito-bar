@@ -1,3 +1,1 @@
-# Elke wijziging heeft goedkeuring van de eigenaar nodig.
-# De ruleset "Main" heeft require_code_owner_review aanstaan; zonder dit bestand deed die regel niets.
 *       @jimvaneijk
