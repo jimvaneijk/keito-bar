@@ -32,7 +32,8 @@ Bij de eerste start opent het venster vanzelf.
 
 <img src="docs/screenshots/verbinden.png" alt="Verbinden met Keito" width="300" align="right">
 
-1. Ga in Keito naar **Settings → API & Developers**.
+1. Ga in Keito naar **Settings → Integrations**, of direct naar
+   [app.keito.ai/settings/developers](https://app.keito.ai/settings/developers).
 2. Maak een **full-access integration key** aan (begint met `kto_`).
    Een *personal read-only sync key* werkt niet: daarmee kun je geen uren schrijven.
 3. Kopieer de key en je **Company ID** naar Keito Bar en klik op **Verbinden**.

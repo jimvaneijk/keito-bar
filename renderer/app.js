@@ -1566,7 +1566,7 @@ document.addEventListener('click', (event) => {
             keitoBridge.openWeb();
             break;
         case 'open-web-settings':
-            keitoBridge.openWeb('/settings');
+            keitoBridge.openWeb('/settings/developers');
             break;
         case 'quit':
             keitoBridge.quit();
