@@ -21,7 +21,8 @@
         "release:universal": "node build/release.js --universal",
         "prerelease:universal": "node build/build-mic-monitor.js",
         "format": "prettier --write .",
-        "format:check": "prettier --check ."
+        "format:check": "prettier --check .",
+        "icons": "electron build/make-icons.js"
     },
     "dependencies": {
         "electron-updater": "^6.8.11"
