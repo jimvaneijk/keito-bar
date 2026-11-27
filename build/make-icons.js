@@ -52,6 +52,23 @@ function arc(cx, cy, radius, width, sweep) {
     };
 }
 
+/** Straight stroke with round caps: the crown and the hand of the stopwatch. */
+function segment(x1, y1, x2, y2, width) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lengthSquared = dx * dx + dy * dy;
+    return (x, y) => {
+        const along = lengthSquared === 0 ? 0 : ((x - x1) * dx + (y - y1) * dy) / lengthSquared;
+        const clamped = Math.max(0, Math.min(1, along));
+        return Math.hypot(x - (x1 + clamped * dx), y - (y1 + clamped * dy)) <= width / 2;
+    };
+}
+
+const union =
+    (...shapes) =>
+    (x, y) =>
+        shapes.some((shape) => shape(x, y));
+
 function roundedRect(left, top, size, radius) {
     const right = left + size;
     const bottom = top + size;
@@ -127,16 +144,17 @@ function chunk(type, data) {
     return Buffer.concat([length, body, crc]);
 }
 
-function encodePng(size, pixels) {
+function encodePng(width, height, pixels) {
     const header = Buffer.alloc(13);
-    header.writeUInt32BE(size, 0);
-    header.writeUInt32BE(size, 4);
+    header.writeUInt32BE(width, 0);
+    header.writeUInt32BE(height, 4);
     header[8] = 8; // bit depth
     header[9] = 6; // colour type: RGBA
     // Each row is prefixed with filter type 0 (none).
-    const raw = Buffer.alloc(size * (size * 4 + 1));
-    for (let row = 0; row < size; row++) {
-        pixels.copy(raw, row * (size * 4 + 1) + 1, row * size * 4, (row + 1) * size * 4);
+    const stride = width * 4;
+    const raw = Buffer.alloc(height * (stride + 1));
+    for (let row = 0; row < height; row++) {
+        pixels.copy(raw, row * (stride + 1) + 1, row * stride, (row + 1) * stride);
     }
     return Buffer.concat([
         Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
@@ -160,16 +178,41 @@ function trayIcon(size, shape, colour = BLACK) {
     return draw(size, [{ colour, inside: (x, y) => shape(x / scale, y / scale) }]);
 }
 
-const idle = ring(8, 8, 5.4, 1.7);
-const running = pie(8, 8, 6.3, 270);
+// A clock face, not a bare circle: at 16 pixels the hands are what say "time". No crown on
+// top — a stem above an upright hand reads as the power symbol, not as a stopwatch.
+const BODY = { x: 8, y: 8, radius: 5.2 };
+const STROKE = 1.6;
+const FRAMES = 12; // one per tick; a full turn takes twelve seconds
+
+const face = ring(BODY.x, BODY.y, BODY.radius, STROKE);
+
+/** Hand pointing `step` twelfths of a turn clockwise from twelve o'clock. */
+function hand(step, length, width = 1.5) {
+    const angle = (step / FRAMES) * TAU - Math.PI / 2;
+    return segment(BODY.x, BODY.y, BODY.x + length * Math.cos(angle), BODY.y + length * Math.sin(angle), width);
+}
+
+const SHORT = 2.5;
+const LONG = 3.3;
+
+const idle = union(face, hand(0, SHORT), hand(3, LONG));
+/** Running frame: the short hand stays put, the long one ticks a twelfth further. */
+const runningFrame = (step) => union(face, hand(0, SHORT), hand(step, LONG));
+
+const frameFiles = [];
+for (let step = 0; step < FRAMES; step++) {
+    frameFiles.push(
+        { file: `trayRunning-${step}.png`, size: 16, render: (size) => trayIcon(size, runningFrame(step), RUN) },
+        { file: `trayRunning-${step}@2x.png`, size: 32, render: (size) => trayIcon(size, runningFrame(step), RUN) },
+    );
+}
 
 const icons = [
     // Idle is a template image: black on transparency, tinted by macOS to match the menu bar.
     { file: 'trayTemplate.png', size: 16, render: (size) => trayIcon(size, idle) },
     { file: 'trayTemplate@2x.png', size: 32, render: (size) => trayIcon(size, idle) },
-    // Running keeps its own green, so a live timer stands out between the grey icons.
-    { file: 'trayRunning.png', size: 16, render: (size) => trayIcon(size, running, RUN) },
-    { file: 'trayRunning@2x.png', size: 32, render: (size) => trayIcon(size, running, RUN) },
+    // Running keeps its own green and ticks, so a live timer is both visible and alive.
+    ...frameFiles,
     {
         file: 'icon.png',
         size: 1024,
@@ -181,7 +224,28 @@ const icons = [
     },
 ];
 
-for (const { file, size, render } of icons) {
-    fs.writeFileSync(path.join(ASSETS, file), encodePng(size, render(size)));
-    console.log(`${file}  ${size}×${size}`);
+if (require.main === module) {
+    for (const { file, size, render } of icons) {
+        fs.writeFileSync(path.join(ASSETS, file), encodePng(size, size, render(size)));
+        console.log(`${file}  ${size}×${size}`);
+    }
 }
+
+// Exported so a preview can compose the very same shapes instead of a copy that drifts.
+module.exports = {
+    draw,
+    encodePng,
+    trayIcon,
+    ring,
+    pie,
+    arc,
+    segment,
+    union,
+    face,
+    hand,
+    idle,
+    runningFrame,
+    BODY,
+    FRAMES,
+    RUN,
+};

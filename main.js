@@ -250,19 +250,41 @@ function liveHours(runningState) {
 let todayTotal = null; // hours of today's stopped entries, pushed by the renderer
 
 // Idle is a template image, so macOS tints it like every other menu bar icon. A running
-// timer keeps its own green instead: that is the one state you want to spot without looking.
-// The trade-off is that it no longer inverts while the menu bar item is highlighted.
+// timer keeps its own green and its hand ticks on once a second: the colour makes it easy
+// to find, the movement is what says time is being counted. The trade-off of a coloured
+// icon is that it no longer inverts while the menu bar item is highlighted.
+const TRAY_FRAMES = 12; // must match FRAMES in build/make-icons.js
+const trayImages = new Map(); // decoding the same PNGs once a second would be wasteful
+let trayFrame = 0;
+let trayAnimation = null;
+
 function icon(isRunning) {
-    const image = nativeImage.createFromPath(
-        path.join(__dirname, 'assets', isRunning ? 'trayRunning.png' : 'trayTemplate.png'),
-    );
-    image.setTemplateImage(!isRunning);
+    const file = isRunning ? `trayRunning-${trayFrame}.png` : 'trayTemplate.png';
+    let image = trayImages.get(file);
+    if (!image) {
+        image = nativeImage.createFromPath(path.join(__dirname, 'assets', file));
+        image.setTemplateImage(!isRunning);
+        trayImages.set(file, image);
+    }
     return image;
+}
+
+function tickTrayFrame() {
+    if (!tray) return;
+    trayFrame = (trayFrame + 1) % TRAY_FRAMES;
+    tray.setImage(icon(true));
 }
 
 function updateTray() {
     if (!tray) return;
     const isRunning = !!running;
+    // The hand only moves while something is being timed; idle costs no timer at all.
+    if (isRunning && !trayAnimation) trayAnimation = setInterval(tickTrayFrame, 1000);
+    else if (!isRunning && trayAnimation) {
+        clearInterval(trayAnimation);
+        trayAnimation = null;
+        trayFrame = 0;
+    }
     tray.setImage(icon(isRunning));
     let title = '';
     if (isRunning) title = ` ${formatHours(liveHours(running))}`;
@@ -1446,6 +1468,7 @@ if (!app.requestSingleInstanceLock()) {
     app.on('will-quit', () => {
         globalShortcut.unregisterAll();
         clearInterval(trayTicker);
+        clearInterval(trayAnimation);
         clearInterval(runningPoll);
         clearInterval(idlePoll);
         clearInterval(reminderPoll);
