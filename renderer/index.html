@@ -289,9 +289,21 @@
                             <input type="checkbox" class="switch" data-pref="launchAtLogin" />
                         </label>
                         <div class="row">
-                            <span>Sneltoets</span>
-                            <kbd id="s-shortcut"></kbd>
+                            <span>Sneltoets om te openen</span>
+                            <span class="row-end">
+                                <button
+                                    type="button"
+                                    id="s-shortcut"
+                                    class="shortcut-btn"
+                                    data-act="record-shortcut"
+                                    title="Klik en druk de combinatie die je wilt"
+                                ></button>
+                                <button type="button" class="link-btn" id="s-shortcut-reset" data-act="reset-shortcut">
+                                    Standaard
+                                </button>
+                            </span>
                         </div>
+                        <p id="s-shortcut-hint" class="muted small shortcut-hint" hidden></p>
                     </div>
 
                     <div class="card meetings">
@@ -496,7 +508,7 @@
                         Gebruik een
                         <strong>full-access integration key</strong>
                         . Je vindt hem in Keito onder
-                        <em>Settings → API &amp; Developers</em>
+                        <em>Settings → Integrations</em>
                         , samen met je Company ID.
                     </p>
                     <form id="setup-form" class="form" autocomplete="off" novalidate>
@@ -510,7 +522,7 @@
                         </label>
                         <button type="submit" id="setup-submit" class="primary-btn">Verbinden</button>
                     </form>
-                    <button class="link-btn" data-act="open-web-settings">Open Keito-instellingen ↗</button>
+                    <button class="link-btn" data-act="open-web-settings">Open Keito-integraties ↗</button>
                     <p class="muted small">
                         De key wordt versleuteld opgeslagen op deze computer en alleen naar app.keito.ai gestuurd.
                     </p>

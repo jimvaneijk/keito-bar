@@ -1049,6 +1049,7 @@ function closeCombos() {
 
 async function openSettings() {
     show('settings');
+    recordingShortcut = false;
     const prefs = await run(keitoBridge.prefsGet()).catch(() => null);
     if (prefs) Object.assign(state.prefs, prefs);
     const me = state.me || {};
@@ -1060,10 +1061,7 @@ async function openSettings() {
         .toUpperCase();
     findElement('#s-name').textContent = me.name || '';
     findElement('#s-company').textContent = [me.companyName, me.email].filter(Boolean).join(' · ');
-    findElement('#s-shortcut').textContent = (state.prefs.shortcut || '')
-        .replace('CommandOrControl', '⌘')
-        .replace('Shift', '⇧')
-        .replace(/\+/g, '');
+    renderShortcut();
     findElement('#s-storage').textContent = state.prefs.encrypted
         ? 'API keys staan versleuteld opgeslagen (macOS-sleutelhanger).'
         : '';
@@ -1109,6 +1107,155 @@ findElement('#jira-form').addEventListener('submit', async (event) => {
     toast(`Jira gekoppeld${state.jira.name ? ` als ${state.jira.name}` : ''}`);
     renderJiraSettings();
 });
+
+// ---------------------------------------------------------------- global shortcut
+//
+// The combination that opens the popover is configurable: click the button in Instellingen
+// and press what you want. Handy when another app has claimed ⌘⇧K (Axure, for one).
+
+let recordingShortcut = false;
+
+const SHORTCUT_SYMBOLS = {
+    Command: '⌘',
+    CommandOrControl: '⌘',
+    Control: '⌃',
+    Alt: '⌥',
+    Option: '⌥',
+    Shift: '⇧',
+    Super: '❖',
+    Up: '↑',
+    Down: '↓',
+    Left: '←',
+    Right: '→',
+    Return: '↵',
+    Space: 'spatie',
+    Backspace: '⌫',
+    Delete: '⌦',
+    Tab: '⇥',
+    PageUp: '⇞',
+    PageDown: '⇟',
+    Home: '↖',
+    End: '↘',
+};
+
+/** Accelerator ('CommandOrControl+Shift+K') as the keys look on the keyboard ('⌘⇧K'). */
+function formatAccelerator(accelerator) {
+    if (!accelerator) return 'Geen';
+    return accelerator
+        .split('+')
+        .map((part) => SHORTCUT_SYMBOLS[part] || part)
+        .join('');
+}
+
+// event.code, so the physical key is taken: on an azerty keyboard ⌘⇧A stays ⌘⇧A.
+const SHORTCUT_CODES = {
+    Space: 'Space',
+    Enter: 'Return',
+    NumpadEnter: 'Return',
+    Tab: 'Tab',
+    Backspace: 'Backspace',
+    Delete: 'Delete',
+    Insert: 'Insert',
+    Home: 'Home',
+    End: 'End',
+    PageUp: 'PageUp',
+    PageDown: 'PageDown',
+    ArrowUp: 'Up',
+    ArrowDown: 'Down',
+    ArrowLeft: 'Left',
+    ArrowRight: 'Right',
+    Comma: ',',
+    Period: '.',
+    Slash: '/',
+    Backslash: '\\',
+    BracketLeft: '[',
+    BracketRight: ']',
+    Semicolon: ';',
+    Quote: "'",
+    Backquote: '`',
+    Minus: '-',
+    Equal: '=',
+};
+
+function keyNameFromEvent(event) {
+    const code = event.code || '';
+    if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+    if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+    if (/^Numpad[0-9]$/.test(code)) return code.slice(6);
+    if (/^F([1-9]|1\d|2[0-4])$/.test(code)) return code;
+    return SHORTCUT_CODES[code] || null;
+}
+
+/** The accelerator for a keydown, or null when it can't be a global shortcut. */
+function acceleratorFromEvent(event) {
+    const key = keyNameFromEvent(event);
+    if (!key) return null;
+    const modifiers = [];
+    if (event.ctrlKey) modifiers.push('Control');
+    if (event.altKey) modifiers.push('Alt');
+    if (event.shiftKey) modifiers.push('Shift');
+    if (event.metaKey) modifiers.push(state.prefs.isMac === false ? 'Super' : 'Command');
+    if (!modifiers.some((modifier) => modifier !== 'Shift')) return null; // Shift alone fires while typing
+    return [...modifiers, key].join('+');
+}
+
+function renderShortcut() {
+    const button = findElement('#s-shortcut');
+    if (!button) return;
+    const accelerator = state.prefs.shortcut || '';
+    button.textContent = recordingShortcut ? 'Druk een combinatie…' : formatAccelerator(accelerator);
+    button.classList.toggle('recording', recordingShortcut);
+    button.classList.toggle('none', !recordingShortcut && !accelerator);
+    findElement('#s-shortcut-reset').hidden = recordingShortcut || accelerator === state.prefs.shortcutDefault;
+    const hint = findElement('#s-shortcut-hint');
+    const taken = !!accelerator && state.prefs.shortcutActive === false;
+    hint.hidden = !recordingShortcut && !taken;
+    hint.textContent = recordingShortcut
+        ? 'Esc annuleert · ⌫ zet de sneltoets uit'
+        : 'Deze combinatie werkt niet: een andere app heeft hem al. Kies een andere.';
+}
+
+function stopRecordingShortcut() {
+    if (!recordingShortcut) return;
+    recordingShortcut = false;
+    renderShortcut();
+}
+
+async function saveShortcut(accelerator) {
+    const result = await run(keitoBridge.shortcutSet(accelerator)).catch(() => null);
+    if (!result) {
+        renderShortcut();
+        return;
+    }
+    Object.assign(state.prefs, result);
+    renderShortcut();
+    toast(result.shortcut ? `Sneltoets is nu ${formatAccelerator(result.shortcut)}` : 'Sneltoets uitgezet');
+}
+
+// Capture, so the app's own keyboard shortcuts don't swallow the keys you're recording.
+document.addEventListener(
+    'keydown',
+    (event) => {
+        if (!recordingShortcut) return;
+        if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock'].includes(event.key)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        stopRecordingShortcut();
+        if (event.key === 'Escape') return;
+        const bare = !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
+        if (bare && (event.code === 'Backspace' || event.code === 'Delete')) {
+            saveShortcut('');
+            return;
+        }
+        const accelerator = acceleratorFromEvent(event);
+        if (!accelerator) {
+            toast('Gebruik ⌘, ⌃ of ⌥ samen met een gewone toets.', 'error');
+            return;
+        }
+        saveShortcut(accelerator);
+    },
+    true,
+);
 
 // ---------------------------------------------------------------- accent colour
 
@@ -1325,6 +1472,7 @@ findElement('#setup-form').addEventListener('submit', async (event) => {
 
 document.addEventListener('click', (event) => {
     const target = event.target;
+    if (recordingShortcut && !target.closest('#s-shortcut')) stopRecordingShortcut();
     const timer = target.closest('[data-timer]');
     if (timer) {
         event.stopPropagation();
@@ -1418,7 +1566,7 @@ document.addEventListener('click', (event) => {
             keitoBridge.openWeb();
             break;
         case 'open-web-settings':
-            keitoBridge.openWeb('/settings');
+            keitoBridge.openWeb('/settings/developers');
             break;
         case 'quit':
             keitoBridge.quit();
@@ -1441,6 +1589,16 @@ document.addEventListener('click', (event) => {
             break;
         case 'test-meeting':
             run(keitoBridge.meetingTest()).catch(() => {});
+            break;
+        case 'record-shortcut':
+            if (recordingShortcut) stopRecordingShortcut();
+            else {
+                recordingShortcut = true;
+                renderShortcut();
+            }
+            break;
+        case 'reset-shortcut':
+            saveShortcut(state.prefs.shortcutDefault || 'CommandOrControl+Shift+K');
             break;
         case 'meeting-forget':
             setPref({ meetingDefaults: null });

@@ -742,6 +742,30 @@ select:focus {
     min-height: 30px;
     font-size: 12px;
 }
+.shortcut-btn {
+    min-width: 58px;
+    height: 24px;
+    padding: 0 9px;
+    border-radius: 6px;
+    border: 0.5px solid var(--line-strong);
+    background: transparent;
+    color: inherit;
+    font-size: 12px;
+    font-weight: 600;
+}
+.shortcut-btn.recording {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+    color: var(--muted);
+    font-weight: 400;
+}
+.shortcut-btn.none {
+    color: var(--muted);
+    font-weight: 400;
+}
+.shortcut-hint {
+    margin: -4px 0 8px;
+}
 .seg {
     display: inline-flex;
     padding: 2px;

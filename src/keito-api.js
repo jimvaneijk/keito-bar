@@ -2,7 +2,8 @@
 // never reaches the renderer.
 //
 // Auth: "Authorization: Bearer kto_…" + "Keito-Account-Id: <Company ID>"
-// (Keito → Settings → API & Developers). Needs a full-access integration key;
+// (Keito → Settings → Integrations, app.keito.ai/settings/developers). Needs a full-access
+// integration key;
 // a personal read-only sync key cannot track time.
 
 const BASE_URL = 'https://app.keito.ai/api/v2';
@@ -182,7 +183,7 @@ class KeitoApi {
         if (!companyId && raw?.capabilities) {
             throw new KeitoError(
                 'read_only_key',
-                'Dit is een read-only sync key. Je hebt een full-access integration key nodig (Settings → API & Developers → Integration keys).',
+                'Dit is een read-only sync key. Je hebt een full-access integration key nodig (Settings → Integrations).',
             );
         }
         if (companyId && companyId !== this.accountId) {

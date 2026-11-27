@@ -28,7 +28,7 @@ try {
 
 const WIN_W = 400;
 const WIN_H = 620;
-const TOGGLE_SHORTCUT = 'CommandOrControl+Shift+K';
+const DEFAULT_SHORTCUT = 'CommandOrControl+Shift+K';
 const isMac = process.platform === 'darwin';
 const IDLE_CHOICES = [5, 10, 15, 20, 30, 60];
 const MIN_HOURS_CHOICES = [4, 5, 6, 7, 7.5, 8];
@@ -86,10 +86,41 @@ function prefs() {
         detachedOnTop: config.detachedOnTop === true,
         requireNoteOrTicket: config.requireNoteOrTicket !== false,
         budgetWarnPercent: BUDGET_WARN_CHOICES.includes(config.budgetWarnPercent) ? config.budgetWarnPercent : 80,
+        shortcut:
+            typeof config.shortcut === 'string' && (config.shortcut === '' || validShortcut(config.shortcut))
+                ? config.shortcut // '' means: no shortcut at all
+                : DEFAULT_SHORTCUT,
     };
 }
 function validTime(time) {
     return typeof time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(time);
+}
+
+const SHORTCUT_MODIFIERS = [
+    'Command',
+    'Cmd',
+    'Control',
+    'Ctrl',
+    'CommandOrControl',
+    'CmdOrCtrl',
+    'Alt',
+    'Option',
+    'AltGr',
+    'Shift',
+    'Super',
+    'Meta',
+];
+const SHORTCUT_KEY =
+    /^(?:[0-9A-Z]|F(?:[1-9]|1\d|2[0-4])|Space|Tab|Backspace|Delete|Insert|Return|Up|Down|Left|Right|Home|End|PageUp|PageDown|Plus|[,./\\[\]`'";=-])$/;
+
+/** An accelerator Electron understands, with at least one modifier that isn't Shift. */
+function validShortcut(accelerator) {
+    if (typeof accelerator !== 'string' || !accelerator) return false;
+    const parts = accelerator.split('+');
+    const key = parts.pop();
+    if (!parts.length || !parts.every((part) => SHORTCUT_MODIFIERS.includes(part))) return false;
+    if (!parts.some((part) => part !== 'Shift')) return false; // Shift+K alone fires while you type
+    return SHORTCUT_KEY.test(key);
 }
 
 function loadCredentials() {
@@ -322,7 +353,11 @@ function setRunningFromEntries(entries, fetchedAt) {
 
 function buildContextMenu() {
     return Menu.buildFromTemplate([
-        { label: 'Open Keito Bar', accelerator: TOGGLE_SHORTCUT, click: () => showWindow() },
+        {
+            label: 'Open Keito Bar',
+            ...(prefs().shortcut ? { accelerator: prefs().shortcut } : {}),
+            click: () => showWindow(),
+        },
         { label: 'Open Keito in browser', click: () => shell.openExternal(WEB_URL) },
         { type: 'separator' },
         ...(running
@@ -982,6 +1017,27 @@ function toggleWindow() {
     else showWindow();
 }
 
+// ---------------------------------------------------------------- global shortcut
+//
+// One shortcut opens and closes the popover. It can be changed because other apps claim
+// ⌘⇧K as well (Axure, for one); an empty value means no shortcut at all.
+
+let shortcutActive = false;
+
+/** (Re)registers the shortcut from the config. Returns false when another app already has it. */
+function applyShortcut() {
+    globalShortcut.unregisterAll();
+    shortcutActive = false;
+    const accelerator = prefs().shortcut;
+    if (!accelerator) return true; // deliberately turned off
+    try {
+        shortcutActive = globalShortcut.register(accelerator, toggleWindow);
+    } catch {
+        shortcutActive = false; // Electron throws on accelerators it cannot parse
+    }
+    return shortcutActive;
+}
+
 // ---------------------------------------------------------------- window mode
 //
 // 'attached': popover under the menubar icon that hides when you click elsewhere (default).
@@ -1103,7 +1159,9 @@ function registerIpc() {
         wrap(async () => ({
             ...prefs(),
             launchAtLogin: app.getLoginItemSettings().openAtLogin,
-            shortcut: TOGGLE_SHORTCUT,
+            shortcutDefault: DEFAULT_SHORTCUT,
+            shortcutActive,
+            isMac,
             encrypted: readConfig().tokenEncrypted === true,
             meetingSupport: meetingSupportStatus(),
             meetingDefaults: meetingDefaults(),
@@ -1164,6 +1222,29 @@ function registerIpc() {
                 app.setLoginItemSettings({ openAtLogin: patch.launchAtLogin });
             updateTray();
             return prefs();
+        }),
+    );
+
+    // The shortcut gets its own channel: registering it can fail (another app has it), and
+    // then nothing should be saved.
+    ipcMain.handle(
+        'shortcut:set',
+        wrap(async (accelerator) => {
+            const wanted = typeof accelerator === 'string' ? accelerator.trim() : '';
+            if (wanted && !validShortcut(wanted))
+                throw new KeitoError('validation', 'Gebruik ⌘, ⌃ of ⌥ samen met een gewone toets.');
+            const config = readConfig();
+            const previous = config.shortcut;
+            config.shortcut = wanted;
+            writeConfig(config);
+            if (!applyShortcut()) {
+                if (previous === undefined) delete config.shortcut;
+                else config.shortcut = previous;
+                writeConfig(config);
+                applyShortcut();
+                throw new KeitoError('validation', 'Die combinatie is al in gebruik door een andere app.');
+            }
+            return { shortcut: prefs().shortcut, shortcutActive };
         }),
     );
 
@@ -1435,7 +1516,7 @@ if (!app.requestSingleInstanceLock()) {
         tray.on('right-click', () => tray.popUpContextMenu(buildContextMenu()));
         updateTray();
 
-        globalShortcut.register(TOGGLE_SHORTCUT, toggleWindow);
+        applyShortcut();
 
         trayTicker = setInterval(updateTray, 15_000);
         runningPoll = setInterval(refreshRunning, 120_000); // pick up timers started elsewhere (web, Raycast)

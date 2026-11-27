@@ -32,7 +32,8 @@ Bij de eerste start opent het venster vanzelf.
 
 <img src="docs/screenshots/verbinden.png" alt="Verbinden met Keito" width="300" align="right">
 
-1. Ga in Keito naar **Settings → API & Developers**.
+1. Ga in Keito naar **Settings → Integrations**, of direct naar
+   [app.keito.ai/settings/developers](https://app.keito.ai/settings/developers).
 2. Maak een **full-access integration key** aan (begint met `kto_`).
    Een *personal read-only sync key* werkt niet: daarmee kun je geen uren schrijven.
 3. Kopieer de key en je **Company ID** naar Keito Bar en klik op **Verbinden**.
@@ -56,6 +57,8 @@ In **Instellingen** kun je nog:
 
 - **Openen bij inloggen** aanzetten, zodat Keito Bar altijd klaarstaat
 - je **accentkleur** kiezen
+- de **sneltoets om Keito Bar te openen** aanpassen (standaard <kbd>⌘⇧K</kbd>; zie
+  [Sneltoetsen](#sneltoetsen))
 - **Notitie of Jira-ticket verplicht** aan- of uitzetten (standaard aan; staat het in Keito zelf
   verplicht, dan geldt het altijd)
 - je **werkdagen** en **herinneringstijden** instellen (zie [Herinneringen](#herinneringen))
@@ -64,7 +67,7 @@ In **Instellingen** kun je nog:
 
 ## Gebruiken
 
-Klik op het klokje in de menubalk, of druk overal op **⌘⇧K**.
+Klik op het klokje in de menubalk, of druk overal op **⌘⇧K** (aan te passen in Instellingen).
 
 ### Uren schrijven
 
@@ -185,7 +188,7 @@ keer per dag (tenzij je *Herinner me over 15 min* kiest).
 
 | Toets | Actie |
 |---|---|
-| <kbd>⌘⇧K</kbd> | Venster openen/sluiten (overal) |
+| <kbd>⌘⇧K</kbd> | Venster openen/sluiten (overal) — zelf in te stellen |
 | <kbd>←</kbd> / <kbd>→</kbd> | Vorige / volgende dag |
 | <kbd>⇧←</kbd> / <kbd>⇧→</kbd> | Vorige / volgende week |
 | <kbd>1</kbd>–<kbd>7</kbd> | Maandag t/m zondag |
@@ -197,6 +200,14 @@ keer per dag (tenzij je *Herinner me over 15 min* kiest).
 | <kbd>⌘R</kbd> | Verversen |
 | <kbd>Esc</kbd> | Terug / venster sluiten |
 | <kbd>⌘W</kbd> | Venster verbergen (ook losgemaakt) |
+
+**Alleen <kbd>⌘⇧K</kbd> is zelf in te stellen**, de rest van de tabel ligt vast. Gebruikt een
+andere app <kbd>⌘⇧K</kbd> al (Axure bijvoorbeeld)? Ga naar **Instellingen → Sneltoets om te
+openen**, klik op de combinatie en druk de toetsen die je wilt.
+Je hebt minstens <kbd>⌘</kbd>, <kbd>⌃</kbd> of <kbd>⌥</kbd> nodig. <kbd>⌫</kbd> zet de sneltoets
+helemaal uit, <kbd>Esc</kbd> annuleert en **Standaard** zet hem terug op <kbd>⌘⇧K</kbd>. macOS
+geeft een combinatie die al bezet is meestal gewoon aan de andere app: doet je nieuwe sneltoets
+niets, kies er dan nog een.
 
 ---
 
@@ -220,6 +231,10 @@ Handmatig controleren: **Instellingen → Controleer op updates**.
 Je menubalk is mogelijk vol (zeker op een MacBook met notch). Sluit wat andere menubalk-apps,
 of open Keito Bar met <kbd>⌘⇧K</kbd>. Op macOS 26: controleer bij *Systeeminstellingen →
 Menubalk* of Keito Bar is toegestaan.
+
+**⌘⇧K doet niets.**
+Een andere app heeft die combinatie waarschijnlijk al (Axure gebruikt hem ook). Kies in
+**Instellingen → Sneltoets om te openen** een andere combinatie; het klokje blijft gewoon werken.
 
 **Na een update blijft Keito Bar op een draaiend rondje staan.**
 macOS vraagt dan eenmalig om toegang tot je sleutelhanger ("Keito Bar wil vertrouwelijke

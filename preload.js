@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('keito', {
     authClear: () => call('auth:clear'),
     prefsGet: () => call('prefs:get'),
     prefsSet: (patch) => call('prefs:set', patch),
+    shortcutSet: (accelerator) => call('shortcut:set', accelerator),
     projects: () => call('projects:list'),
     tasks: (projectId) => call('tasks:list', projectId),
     entries: (range) => call('entries:list', range),
