@@ -56,7 +56,8 @@ In **Instellingen** kun je nog:
 
 - **Openen bij inloggen** aanzetten, zodat Keito Bar altijd klaarstaat
 - je **accentkleur** kiezen
-- je **sneltoets** aanpassen (standaard <kbd>⌘⇧K</kbd>; zie [Sneltoetsen](#sneltoetsen))
+- de **sneltoets om Keito Bar te openen** aanpassen (standaard <kbd>⌘⇧K</kbd>; zie
+  [Sneltoetsen](#sneltoetsen))
 - **Notitie of Jira-ticket verplicht** aan- of uitzetten (standaard aan; staat het in Keito zelf
   verplicht, dan geldt het altijd)
 - je **werkdagen** en **herinneringstijden** instellen (zie [Herinneringen](#herinneringen))
@@ -199,8 +200,9 @@ keer per dag (tenzij je *Herinner me over 15 min* kiest).
 | <kbd>Esc</kbd> | Terug / venster sluiten |
 | <kbd>⌘W</kbd> | Venster verbergen (ook losgemaakt) |
 
-**Andere sneltoets kiezen.** Gebruikt een andere app <kbd>⌘⇧K</kbd> al (Axure bijvoorbeeld)?
-Ga naar **Instellingen → Sneltoets**, klik op de combinatie en druk de toetsen die je wilt.
+**Alleen <kbd>⌘⇧K</kbd> is zelf in te stellen**, de rest van de tabel ligt vast. Gebruikt een
+andere app <kbd>⌘⇧K</kbd> al (Axure bijvoorbeeld)? Ga naar **Instellingen → Sneltoets om te
+openen**, klik op de combinatie en druk de toetsen die je wilt.
 Je hebt minstens <kbd>⌘</kbd>, <kbd>⌃</kbd> of <kbd>⌥</kbd> nodig. <kbd>⌫</kbd> zet de sneltoets
 helemaal uit, <kbd>Esc</kbd> annuleert en **Standaard** zet hem terug op <kbd>⌘⇧K</kbd>. macOS
 geeft een combinatie die al bezet is meestal gewoon aan de andere app: doet je nieuwe sneltoets
@@ -231,7 +233,7 @@ Menubalk* of Keito Bar is toegestaan.
 
 **⌘⇧K doet niets.**
 Een andere app heeft die combinatie waarschijnlijk al (Axure gebruikt hem ook). Kies in
-**Instellingen → Sneltoets** een andere combinatie; het klokje blijft gewoon werken.
+**Instellingen → Sneltoets om te openen** een andere combinatie; het klokje blijft gewoon werken.
 
 **Na een update blijft Keito Bar op een draaiend rondje staan.**
 macOS vraagt dan eenmalig om toegang tot je sleutelhanger ("Keito Bar wil vertrouwelijke
